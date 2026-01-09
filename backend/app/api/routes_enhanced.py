@@ -20,6 +20,7 @@ from app.database.database import get_db
 from app.database.models import Article, SchedulerLog
 from app.services.bias_detector import BiasDetectorService
 from app.services.scheduler import get_scheduler
+from app.services.article_processor import ArticleProcessor
 from app.config import settings
 from app.config.newspapers import get_all_newspaper_keys
 
@@ -111,18 +112,34 @@ async def full_process(request: Request, article: ArticleInput) -> FullProcessRe
 scraping_jobs = {}
 
 
-async def run_scraping_task(job_id: str, sources: List[str], start_dt: datetime, end_dt: datetime):
-    """Background task to run scraping."""
+async def run_scraping_task(
+    job_id: str, 
+    sources: List[str], 
+    start_dt: datetime, 
+    end_dt: datetime,
+    section_ids: Optional[dict] = None
+):
+    """
+    Background task to run scraping.
+    
+    Args:
+        job_id: Unique job identifier
+        sources: List of newspaper sources
+        start_dt: Start datetime
+        end_dt: End datetime
+        section_ids: Optional dict mapping source to list of section IDs
+    """
     try:
         scraping_jobs[job_id] = {
             "status": "running",
             "started_at": datetime.now().isoformat(),
             "sources": sources,
+            "section_ids": section_ids,
             "progress": "Scraping in progress..."
         }
         
         scheduler = get_scheduler()
-        stats = await scheduler.run_manual_scraping(sources, start_dt, end_dt)
+        stats = await scheduler.run_manual_scraping(sources, start_dt, end_dt, section_ids)
         
         scraping_jobs[job_id] = {
             "status": "completed",
@@ -145,14 +162,24 @@ async def manual_scrape(
     background_tasks: BackgroundTasks,
     sources: Optional[List[str]] = Query(default=None, alias="sources[]"),
     start_date: Optional[date] = Query(None, description="Start date (YYYY-MM-DD)"),
-    end_date: Optional[date] = Query(None, description="End date (YYYY-MM-DD)")
+    end_date: Optional[date] = Query(None, description="End date (YYYY-MM-DD)"),
+    prothom_alo_sections: Optional[List[str]] = Query(default=None, alias="prothom_alo_sections[]", description="Section IDs for Prothom Alo")
 ):
     """
     Manually trigger scraping for specific newspapers and date range.
     
     - **sources[]**: List of newspaper keys (prothom_alo, daily_star, jugantor, dhaka_tribune, samakal)
-    - **start_date**: Start date for scraping
-    - **end_date**: End date for scraping
+    - **start_date**: Start date for scraping (YYYY-MM-DD)
+    - **end_date**: End date for scraping (YYYY-MM-DD)
+    - **prothom_alo_sections[]**: Optional section IDs for Prothom Alo filtering
+    
+    Section IDs for Prothom Alo:
+    - 22237: সর্বশেষ (Latest)
+    - 17533,17535,17536,17538,22321,22236: রাজনীতি (Politics)
+    - 17690,17693,17691,22329,22327,22330,17694: বাংলাদেশ (Bangladesh)
+    - 17552,17553,22324,22325,22326,26653,17556,17555,23382,23383,17560: বিশ্ব (International)
+    - 17562,22333,22334,22335,35622,17563,35623: খেলা (Sports)
+    - 17736,17737,17739,23426,35867,35868: বিনোদন (Entertainment)
     
     If not provided, scrapes all enabled newspapers for today.
     Returns immediately and runs scraping in background.
@@ -163,16 +190,23 @@ async def manual_scrape(
         logger.info(f"  - sources (raw): {sources}")
         logger.info(f"  - start_date: {start_date}")
         logger.info(f"  - end_date: {end_date}")
+        logger.info(f"  - prothom_alo_sections: {prothom_alo_sections}")
         
         # Also try to get sources without [] if the alias doesn't work
         if not sources:
-            # Try alternative parameter name
             query_params = dict(request.query_params)
             logger.info(f"  - Query params: {query_params}")
             if 'sources[]' in query_params:
                 sources_raw = request.query_params.getlist('sources[]')
                 sources = sources_raw if sources_raw else None
                 logger.info(f"  - Found sources[] in query: {sources}")
+        
+        # Try to get prothom_alo_sections if not already retrieved
+        if not prothom_alo_sections:
+            query_params = dict(request.query_params)
+            if 'prothom_alo_sections[]' in query_params:
+                prothom_alo_sections = request.query_params.getlist('prothom_alo_sections[]')
+                logger.info(f"  - Found prothom_alo_sections[] in query: {prothom_alo_sections}")
         
         # Validate sources
         if sources:
@@ -188,13 +222,29 @@ async def manual_scrape(
         start_dt = datetime.combine(start_date, datetime.min.time()) if start_date else None
         end_dt = datetime.combine(end_date, datetime.max.time()) if end_date else None
         
+        # Prepare section_ids dict
+        section_ids_dict = {}
+        if prothom_alo_sections and 'prothom_alo' in (sources or []):
+            section_ids_dict['prothom_alo'] = prothom_alo_sections
+            logger.info(f"  - Will use {len(prothom_alo_sections)} section groups for Prothom Alo")
+        
         # Generate job ID
         job_id = f"scrape_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
         
-        logger.info(f"Starting background scraping job {job_id}: sources={sources}, dates={start_dt} to {end_dt}")
+        logger.info(f"Starting background scraping job {job_id}")
+        logger.info(f"  - sources={sources}")
+        logger.info(f"  - dates={start_dt} to {end_dt}")
+        logger.info(f"  - section_ids={section_ids_dict}")
         
         # Start scraping in background
-        background_tasks.add_task(run_scraping_task, job_id, sources or [], start_dt, end_dt)
+        background_tasks.add_task(
+            run_scraping_task, 
+            job_id, 
+            sources or [], 
+            start_dt, 
+            end_dt,
+            section_ids_dict or None
+        )
         
         return {
             "status": "started",
@@ -204,7 +254,8 @@ async def manual_scrape(
             "date_range": {
                 "start": start_date.isoformat() if start_date else None,
                 "end": end_date.isoformat() if end_date else None
-            }
+            },
+            "prothom_alo_sections": prothom_alo_sections if prothom_alo_sections else "using defaults"
         }
     
     except HTTPException:
@@ -335,6 +386,91 @@ async def get_article(article_id: int, db: Session = Depends(get_db)):
         raise HTTPException(status_code=500, detail=f"Failed to fetch article: {str(e)}")
 
 
+@router.post("/articles/{article_id}/reprocess")
+async def reprocess_article(article_id: int, db: Session = Depends(get_db)):
+    """
+    Re-process a specific article to apply debiasing again.
+    Useful after code updates to fix articles that weren't properly debiased.
+    """
+    try:
+        article = db.query(Article).filter(Article.id == article_id).first()
+        
+        if not article:
+            raise HTTPException(status_code=404, detail="Article not found")
+        
+        # Reset processing status
+        article.processed = False
+        article.debiased_content = None
+        article.changes_made = None
+        article.total_changes = 0
+        db.commit()
+        
+        # Re-process the article
+        processor = ArticleProcessor(db)
+        result = await processor.process_article(article)
+        
+        return {
+            "status": "success",
+            "article_id": article_id,
+            "biased": result["biased"],
+            "changes_made": result["changes_made"],
+            "message": f"Article reprocessed successfully. {result['changes_made']} changes made."
+        }
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Reprocess article error: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to reprocess article: {str(e)}")
+
+
+@router.post("/articles/reprocess-all-biased")
+async def reprocess_all_biased_articles(
+    db: Session = Depends(get_db),
+    limit: int = Query(50, ge=1, le=200, description="Max articles to reprocess")
+):
+    """
+    Re-process all biased articles that have 0 changes.
+    Useful after fixing the debiasing logic.
+    """
+    try:
+        # Find biased articles with no changes
+        articles = db.query(Article).filter(
+            Article.is_biased == True,
+            (Article.total_changes == 0) | (Article.total_changes == None)
+        ).limit(limit).all()
+        
+        if not articles:
+            return {"status": "success", "message": "No articles need reprocessing", "count": 0}
+        
+        processor = ArticleProcessor(db)
+        total_changes = 0
+        processed_count = 0
+        
+        for article in articles:
+            # Reset and reprocess
+            article.processed = False
+            article.debiased_content = None
+            article.changes_made = None
+            article.total_changes = 0
+            db.commit()
+            
+            result = await processor.process_article(article)
+            processed_count += 1
+            total_changes += result.get("changes_made", 0)
+        
+        return {
+            "status": "success",
+            "processed_count": processed_count,
+            "total_changes": total_changes,
+            "message": f"Reprocessed {processed_count} articles with {total_changes} total changes"
+        }
+    
+    except Exception as e:
+        logger.error(f"Reprocess all biased error: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to reprocess articles: {str(e)}")
+
+
 @router.get("/scheduler/status")
 async def get_scheduler_status():
     """Get scheduler status and recent job history."""
@@ -343,16 +479,22 @@ async def get_scheduler_status():
         
         # Get scheduler info
         jobs = []
+        next_run = None
         if scheduler._is_running and scheduler.scheduler:
             for job in scheduler.scheduler.get_jobs():
+                job_next_run = job.next_run_time.isoformat() if job.next_run_time else None
                 jobs.append({
                     "id": job.id,
                     "name": job.name,
-                    "next_run": job.next_run_time.isoformat() if job.next_run_time else None
+                    "next_run": job_next_run
                 })
+                # Set next_run to the earliest scheduled job
+                if job_next_run and (next_run is None or job_next_run < next_run):
+                    next_run = job_next_run
         
         return {
             "running": scheduler._is_running,
+            "next_run": next_run,
             "jobs": jobs
         }
     
@@ -434,7 +576,9 @@ async def get_statistics(db: Session = Depends(get_db)):
         return {
             "total_articles": total_articles,
             "processed_articles": processed_articles,
+            "processed_count": processed_articles,  # Frontend expects this
             "biased_articles": biased_articles,
+            "biased_count": biased_articles,  # Frontend expects this
             "unprocessed_articles": total_articles - processed_articles,
             "by_source": by_source
         }

@@ -3,6 +3,7 @@ Article processing service for bias detection and debiasing.
 Processes scraped articles from database.
 """
 import logging
+import asyncio
 from typing import Dict, Any, Optional
 from sqlalchemy.orm import Session
 from datetime import datetime
@@ -11,6 +12,9 @@ from app.services.bias_detector import BiasDetectorService
 from app.services.openai_service import OpenAIService
 
 logger = logging.getLogger(__name__)
+
+# Delay between LLM calls (seconds) to respect rate limits
+LLM_DELAY_SECONDS = 2
 
 
 class ArticleProcessor:
@@ -133,7 +137,7 @@ class ArticleProcessor:
             
             logger.info(f"Found {len(unprocessed)} unprocessed articles")
             
-            for article in unprocessed:
+            for idx, article in enumerate(unprocessed):
                 result = await self.process_article(article)
                 
                 stats["total_processed"] += 1
@@ -145,6 +149,12 @@ class ArticleProcessor:
                     stats["total_changes"] += result["changes_made"]
                 else:
                     stats["failed"] += 1
+                
+                # Add delay between LLM calls to respect rate limits
+                # Skip delay after the last article
+                if idx < len(unprocessed) - 1:
+                    logger.debug(f"Waiting {LLM_DELAY_SECONDS}s before next article (rate limit)")
+                    await asyncio.sleep(LLM_DELAY_SECONDS)
             
             logger.info(
                 f"Batch processing complete: "

@@ -68,12 +68,13 @@ class ScrapeRequest(BaseModel):
     source: str = Field(..., description="Newspaper source: prothom_alo, jugantor, daily_star, dhaka_tribune")
     start_date: date = Field(..., description="Start date for scraping")
     end_date: date = Field(..., description="End date for scraping")
+    section_ids: Optional[List[str]] = Field(None, description="Optional section IDs for Prothom Alo (e.g., ['22237', '17533,17535'])")
     
     @field_validator("source")
     @classmethod
     def validate_source(cls, v: str) -> str:
         """Validate newspaper source."""
-        allowed_sources = ["prothom_alo", "jugantor", "daily_star", "dhaka_tribune"]
+        allowed_sources = ["prothom_alo", "jugantor", "daily_star", "dhaka_tribune", "samakal"]
         if v.lower() not in allowed_sources:
             raise ValueError(f"Source must be one of: {', '.join(allowed_sources)}")
         return v.lower()

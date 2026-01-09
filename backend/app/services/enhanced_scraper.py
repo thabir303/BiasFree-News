@@ -28,10 +28,17 @@ class EnhancedNewsScraper:
         self,
         source: str,
         start_date: date,
-        end_date: date
+        end_date: date,
+        section_ids: Optional[List[str]] = None
     ) -> Dict[str, Any]:
         """
         Scrape articles and store in database.
+        
+        Args:
+            source: Newspaper source key
+            start_date: Start date for scraping
+            end_date: End date for scraping
+            section_ids: Optional list of section IDs (for Prothom Alo)
         
         Returns:
             Dictionary with scraping statistics
@@ -55,7 +62,8 @@ class EnhancedNewsScraper:
                 self._scrape_source,
                 config,
                 start_date,
-                end_date
+                end_date,
+                section_ids
             )
             
             stats["total_scraped"] = len(articles)
@@ -122,10 +130,17 @@ class EnhancedNewsScraper:
         self,
         config,
         start_date: date,
-        end_date: date
+        end_date: date,
+        section_ids: Optional[List[str]] = None
     ) -> List[Dict[str, Any]]:
         """
         Scrape articles from a specific source using the new scraper classes.
+        
+        Args:
+            config: Newspaper configuration
+            start_date: Start date
+            end_date: End date
+            section_ids: Optional section IDs for Prothom Alo
         """
         articles = []
         
@@ -147,8 +162,13 @@ class EnhancedNewsScraper:
                 logger.warning(f"No scraper implemented for: {config.key}")
                 return articles
             
-            # Initialize and run scraper
-            scraper = scraper_class(start_str, end_str)
+            # Initialize scraper with section_ids if Prothom Alo
+            if config.key == "prothom_alo" and section_ids:
+                logger.info(f"Initializing Prothom Alo scraper with {len(section_ids)} section groups")
+                scraper = scraper_class(start_str, end_str, section_ids)
+            else:
+                scraper = scraper_class(start_str, end_str)
+            
             scraped_articles = scraper.scrape_articles()
             
             # Convert ScrapedArticle objects to dictionaries
@@ -159,8 +179,11 @@ class EnhancedNewsScraper:
                     "content": article.content,
                     "published_date": article.published_date
                 })
+            
+            logger.info(f"Total articles scraped from {config.key}: {len(articles)}")
         
         except Exception as e:
             logger.error(f"Scraper error for {config.key}: {str(e)}", exc_info=True)
         
-        return articles[:settings.max_scrape_articles]
+        # No limit - return all scraped articles
+        return articles

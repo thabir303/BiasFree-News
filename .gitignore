@@ -1,3 +1,4 @@
 backend copy
 *.md
 !README.md
+*.log

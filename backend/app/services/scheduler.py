@@ -164,7 +164,8 @@ class SchedulerService:
         self,
         sources: Optional[list] = None,
         start_date: Optional[datetime] = None,
-        end_date: Optional[datetime] = None
+        end_date: Optional[datetime] = None,
+        section_ids: Optional[dict] = None
     ) -> dict:
         """
         Manually trigger scraping for specific sources and date range.
@@ -174,6 +175,7 @@ class SchedulerService:
             sources: List of newspaper keys (None = all enabled)
             start_date: Start date (None = today)
             end_date: End date (None = today)
+            section_ids: Optional dict mapping source to list of section IDs
         
         Returns:
             Scraping and processing statistics
@@ -186,7 +188,8 @@ class SchedulerService:
         
         logger.info(
             f"Manual scraping triggered: "
-            f"sources={sources}, dates={start_date.date()} to {end_date.date()}"
+            f"sources={sources}, dates={start_date.date()} to {end_date.date()}, "
+            f"section_ids={section_ids}"
         )
         
         db = SessionLocal()
@@ -227,10 +230,18 @@ class SchedulerService:
             for newspaper in newspapers:
                 try:
                     logger.info(f"Starting scraping for {newspaper.name} ({newspaper.key})...")
+                    
+                    # Get section_ids for this source if provided
+                    source_section_ids = None
+                    if section_ids and newspaper.key in section_ids:
+                        source_section_ids = section_ids[newspaper.key]
+                        logger.info(f"Using {len(source_section_ids)} section groups for {newspaper.key}")
+                    
                     stats = await scraper.scrape_and_store(
                         source=newspaper.key,
                         start_date=start_date.date(),
-                        end_date=end_date.date()
+                        end_date=end_date.date(),
+                        section_ids=source_section_ids
                     )
                     
                     total_stats["total_scraped"] += stats["new_articles"]
@@ -246,11 +257,12 @@ class SchedulerService:
                     logger.error(error_msg, exc_info=True)
                     total_stats["errors"].append(error_msg)
             
-            # Process articles
+            # Process all scraped articles (with rate limiting built into processor)
             processor = ArticleProcessor(db)
-            process_stats = await processor.process_unprocessed_articles(limit=100)
+            process_stats = await processor.process_unprocessed_articles(limit=200)
             total_stats["total_processed"] = process_stats["successful"]
             total_stats["processing"] = process_stats
+            logger.info(f"LLM processing complete: {process_stats['successful']}/{process_stats['total_processed']} articles processed")
             
             return total_stats
         

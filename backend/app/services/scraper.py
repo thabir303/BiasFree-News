@@ -87,37 +87,204 @@ class ProthomAloScraper(NewspaperScraper):
     BASE_URL = "https://www.prothomalo.com"
     API_SEARCH_URL = "https://www.prothomalo.com/api/v1/search"
     PAGE_SIZE = 100
+    ARTICLES_PER_SECTION = 50  # Max articles to fetch per section
+    MAX_PARALLEL_FETCHES = 10  # Number of parallel content fetches
     
-    def __init__(self, start_date: str, end_date: str):
+    # Default section IDs for different categories (from Prothom Alo website)
+    # These are the actual section IDs used in Prothom Alo's search API
+    DEFAULT_SECTIONS = [
+        '22237',  # রাজনীতি (Politics)
+        '17533,17535,17536,17538,22321,22236',  # বাংলাদেশ (Bangladesh)
+        '17690,17693,17691,22329,22327,22330,17694',  # মতামত (Opinion)
+        '17736,17737,17739,23426,35867,35868',  # প্রযুক্তি (Technology)
+        '17584,17586,22323,35621,17585,17587,17588,17589,17591'  # বিশ্ব (World/International)
+    ]
+    
+    def __init__(self, start_date: str, end_date: str, section_ids: Optional[List[str]] = None):
+        """
+        Initialize Prothom Alo scraper with optional section filtering.
+        
+        Args:
+            start_date: Start date in YYYY-MM-DD format
+            end_date: End date in YYYY-MM-DD format
+            section_ids: Optional list of section IDs to scrape. If None, uses DEFAULT_SECTIONS
+        """
         super().__init__(start_date, end_date)
         self._lock = threading.Lock()
         self._seen_urls = set()
+        self.section_ids = section_ids if section_ids else self.DEFAULT_SECTIONS
+        logger.info(f"Prothom Alo scraper initialized with {len(self.section_ids)} section groups")
     
     def scrape_articles(self) -> List[ScrapedArticle]:
-        """Scrape articles from Prothom Alo using search API."""
-        logger.info("Starting Prothom Alo scraping (All sections)...")
+        """Scrape articles from Prothom Alo using search API with section filtering."""
+        logger.info("Starting Prothom Alo scraping (Section-based with date range)...")
         logger.info(f"Date range: {self.start_date.strftime('%Y-%m-%d')} to {self.end_date.strftime('%Y-%m-%d')}")
+        logger.info(f"Sections to scrape: {len(self.section_ids)} groups")
         
         all_articles = []
-        date_chunks = self.split_date_range_by_month()
         
-        with ThreadPoolExecutor(max_workers=2) as executor:
-            future_to_chunk = {
-                executor.submit(self.scrape_articles_for_date_range, start, end): (start, end) 
-                for start, end in date_chunks
+        # Scrape each section group
+        for section_id_group in self.section_ids:
+            logger.info(f"\n{'='*60}")
+            logger.info(f"Scraping section group: {section_id_group}")
+            logger.info(f"{'='*60}")
+            
+            try:
+                articles = self.scrape_section(section_id_group)
+                all_articles.extend(articles)
+                logger.info(f"Section {section_id_group}: Collected {len(articles)} articles (Total so far: {len(all_articles)})")
+                time.sleep(0.5)  # Minimal delay between sections
+            except Exception as e:
+                logger.error(f"Failed to scrape section {section_id_group}: {str(e)}")
+        
+        logger.info(f"\nProthom Alo: Scraped {len(all_articles)} total articles from {len(self.section_ids)} section groups")
+        return all_articles
+    
+    def scrape_section(self, section_ids: str) -> List[ScrapedArticle]:
+        """Scrape articles for a specific section or group of sections with parallelization."""
+        start_dt = self.start_date
+        end_dt = self.end_date.replace(hour=23, minute=59, second=59)
+        
+        published_after = int(start_dt.timestamp() * 1000)
+        published_before = int(end_dt.timestamp() * 1000)
+        
+        logger.info(f"  Date range: {start_dt.strftime('%Y-%m-%d')} to {end_dt.strftime('%Y-%m-%d')}")
+        logger.info(f"  Target: {self.ARTICLES_PER_SECTION} articles per section")
+        
+        # Step 1: Collect story metadata from API (fast)
+        stories_to_process = []
+        offset = 0
+        
+        while len(stories_to_process) < self.ARTICLES_PER_SECTION:
+            params = {
+                'published-after': published_after,
+                'published-before': published_before,
+                'section-id': section_ids,
+                'type': 'text,team-bio,listicle',
+                'limit': min(self.PAGE_SIZE, self.ARTICLES_PER_SECTION - len(stories_to_process)),
+                'offset': offset
             }
             
-            for future in as_completed(future_to_chunk):
-                start, end = future_to_chunk[future]
-                try:
-                    articles = future.result()
-                    all_articles.extend(articles)
-                    logger.info(f"Completed {start} to {end}: {len(articles)} articles")
-                except Exception as e:
-                    logger.error(f"Failed {start} to {end}: {str(e)}")
+            try:
+                response = self.session.get(self.API_SEARCH_URL, params=params, timeout=30)
+                response.raise_for_status()
+                
+                if not response.text or response.text.strip() == '':
+                    break
+                
+                data = response.json()
+                results = data.get('results', {})
+                stories = results.get('stories', [])
+                
+                logger.info(f"  API returned {len(stories)} stories at offset {offset}")
+                
+                if not stories:
+                    break
+                
+                # Filter valid stories
+                for story in stories:
+                    if len(stories_to_process) >= self.ARTICLES_PER_SECTION:
+                        break
+                    
+                    metadata = self._extract_story_metadata(story)
+                    if metadata:
+                        with self._lock:
+                            if metadata['url'] not in self._seen_urls:
+                                self._seen_urls.add(metadata['url'])
+                                stories_to_process.append(metadata)
+                
+                offset += len(stories)
+                
+                if len(stories) < self.PAGE_SIZE:
+                    break
+                    
+            except Exception as e:
+                logger.error(f"  API request failed: {str(e)}")
+                break
         
-        logger.info(f"Prothom Alo: Scraped {len(all_articles)} total articles")
-        return all_articles
+        logger.info(f"  Collected {len(stories_to_process)} story metadata, now fetching content in parallel...")
+        
+        # Step 2: Fetch content in parallel (the slow part, now parallelized!)
+        articles = []
+        
+        with ThreadPoolExecutor(max_workers=self.MAX_PARALLEL_FETCHES) as executor:
+            future_to_story = {
+                executor.submit(self._fetch_and_create_article, story): story 
+                for story in stories_to_process
+            }
+            
+            for future in as_completed(future_to_story):
+                try:
+                    article = future.result()
+                    if article:
+                        articles.append(article)
+                except Exception as e:
+                    logger.error(f"  Failed to fetch article: {str(e)}")
+        
+        logger.info(f"  Section {section_ids}: Collected {len(articles)} valid articles")
+        return articles
+    
+    def _extract_story_metadata(self, story_data: Dict) -> Optional[Dict]:
+        """Extract metadata from API story data without fetching content."""
+        try:
+            headline = story_data.get('headline', '')
+            if not headline:
+                return None
+            
+            slug = story_data.get('slug', '')
+            if not slug:
+                return None
+            
+            # Skip non-article content
+            skip_sections = ['feature/', 'features/', 'activities/', 'activity/', 'quiz/', 'games/']
+            if any(section in slug for section in skip_sections):
+                return None
+            
+            url = f"{self.BASE_URL}/{slug}"
+            
+            published_at = story_data.get('published-at') or story_data.get('first-published-at')
+            if not published_at:
+                return None
+            
+            article_date = datetime.fromtimestamp(published_at / 1000)
+            
+            if not self.is_within_date_range(article_date):
+                return None
+            
+            return {
+                'headline': headline,
+                'url': url,
+                'published_date': article_date.strftime('%Y-%m-%d'),
+                'summary': story_data.get('summary', '') or story_data.get('subheadline', '')
+            }
+            
+        except Exception as e:
+            logger.error(f"Failed to extract story metadata: {str(e)}")
+            return None
+    
+    def _fetch_and_create_article(self, metadata: Dict) -> Optional[ScrapedArticle]:
+        """Fetch content and create ScrapedArticle from metadata."""
+        try:
+            full_content = self.fetch_article_content(metadata['url'])
+            content = full_content if full_content and len(full_content) > 100 else metadata['summary']
+            
+            if not content or len(content) < 50:
+                return None
+            
+            # Truncate content to 2000 characters for LLM processing efficiency
+            if len(content) > 2000:
+                content = content[:2000]
+            
+            return ScrapedArticle(
+                title=metadata['headline'],
+                content=content,
+                url=metadata['url'],
+                published_date=metadata['published_date'],
+                source="prothom_alo"
+            )
+        except Exception as e:
+            logger.error(f"Failed to create article from {metadata['url']}: {str(e)}")
+            return None
     
     def split_date_range_by_month(self) -> List[tuple]:
         """Split the date range into monthly chunks for parallel processing."""
