@@ -1,5 +1,6 @@
 """
-Enhanced scraper service with database integration and improved article extraction.
+Enhanced scraper service with database integration - MODIFIED for manual processing only.
+Scrapes articles without automatic LLM analysis.
 """
 import logging
 import asyncio
@@ -15,17 +16,17 @@ from app.services.optimized_scraper import OptimizedProthomAloScraper, Optimized
 logger = logging.getLogger(__name__)
 
 
-class EnhancedNewsScraper:
+class ManualOnlyNewsScraper:
     """
-    Enhanced web scraper for Bengali and English newspapers.
-    Includes database integration and better error handling.
+    Scraping service that ONLY collects articles without automatic processing.
+    Articles are stored for manual bias analysis later.
     """
     
     def __init__(self, db: Session):
         """Initialize scraper with database session."""
         self.db = db
     
-    async def scrape_and_store(
+    async def scrape_only(
         self,
         source: str,
         start_date: date,
@@ -33,7 +34,7 @@ class EnhancedNewsScraper:
         section_ids: Optional[List[str]] = None
     ) -> Dict[str, Any]:
         """
-        Scrape articles and store in database.
+        Scrape articles and store in database WITHOUT processing.
         
         Args:
             source: Newspaper source key
@@ -49,30 +50,28 @@ class EnhancedNewsScraper:
             "total_scraped": 0,
             "new_articles": 0,
             "duplicates": 0,
-            "errors": []
+            "errors": [],
+            "scraping_only": True  # Flag to indicate no processing
         }
         
         try:
             # Get newspaper configuration
             config = get_newspaper_config(source)
+            if not config:
+                raise ValueError(f"Unknown source: {source}")
             
-            # Scrape articles
-            loop = asyncio.get_event_loop()
-            articles = await loop.run_in_executor(
-                None,
-                self._scrape_source,
-                config,
-                start_date,
-                end_date,
-                section_ids
-            )
+            logger.info(f"Scraping {config.name} ({source}) from {start_date} to {end_date}")
             
+            # Scrape articles using the scraper
+            articles = self._scrape_source(config, start_date, end_date, section_ids)
             stats["total_scraped"] = len(articles)
             
-            # Store in database
+            logger.info(f"Scraped {len(articles)} articles from {source}")
+            
+            # Store articles in database without processing
             for article_data in articles:
                 try:
-                    # Check if article already exists
+                    # Check for duplicate by URL
                     existing = self.db.query(Article).filter(
                         Article.url == article_data["url"]
                     ).first()
@@ -82,23 +81,18 @@ class EnhancedNewsScraper:
                         logger.debug(f"Duplicate article skipped: {article_data['url']}")
                         continue
                     
-                    # Convert published_date string to datetime if needed
-                    pub_date = article_data.get("published_date")
-                    if pub_date and isinstance(pub_date, str):
-                        try:
-                            pub_date = datetime.strptime(pub_date, "%Y-%m-%d")
-                        except ValueError:
-                            pub_date = None
-                    
-                    # Create new article
+                    # Create new article entry (unprocessed)
                     article = Article(
-                        source=source,
                         url=article_data["url"],
-                        title=article_data.get("title"),
+                        title=article_data["title"],
                         original_content=article_data["content"],
-                        published_date=pub_date,
+                        source=source,
+                        published_date=article_data.get("published_date"),
+                        author=article_data.get("author"),
+                        category=article_data.get("category"),
                         scraped_at=datetime.utcnow(),
-                        processed=False
+                        processed=False,  # Important: Don't process automatically
+                        processing_error=None
                     )
                     
                     self.db.add(article)
@@ -114,7 +108,7 @@ class EnhancedNewsScraper:
             
             logger.info(
                 f"Scraping complete for {source}: "
-                f"{stats['new_articles']} new, "
+                f"{stats['new_articles']} new articles stored (unprocessed), "
                 f"{stats['duplicates']} duplicates, "
                 f"{len(stats['errors'])} errors"
             )
@@ -135,7 +129,7 @@ class EnhancedNewsScraper:
         section_ids: Optional[List[str]] = None
     ) -> List[Dict[str, Any]]:
         """
-        Scrape articles from a specific source using optimized scraper classes.
+        Scrape articles from a specific source using scraper classes.
         
         Args:
             config: Newspaper configuration
@@ -166,11 +160,12 @@ class EnhancedNewsScraper:
             
             # Initialize scraper with section_ids if Prothom Alo
             if config.key == "prothom_alo" and section_ids:
-                logger.info(f"Initializing optimized Prothom Alo scraper with {len(section_ids)} section groups")
+                logger.info(f"Initializing scraper with {len(section_ids)} section groups")
                 scraper = scraper_class(start_str, end_str, section_ids)
             else:
                 scraper = scraper_class(start_str, end_str)
             
+            # Scrape articles
             scraped_articles = scraper.scrape_articles()
             
             # Convert ScrapedArticle objects to dictionaries
@@ -179,7 +174,9 @@ class EnhancedNewsScraper:
                     "url": article.url,
                     "title": article.title,
                     "content": article.content,
-                    "published_date": article.published_date
+                    "published_date": article.published_date,
+                    "author": article.author,
+                    "category": article.category
                 })
             
             logger.info(f"Total articles scraped from {config.key}: {len(articles)}")
@@ -187,5 +184,81 @@ class EnhancedNewsScraper:
         except Exception as e:
             logger.error(f"Scraper error for {config.key}: {str(e)}", exc_info=True)
         
-        # No limit - return all scraped articles
         return articles
+
+
+async def scrape_multiple_newspapers_manual(
+    newspapers: List[str],
+    start_date: date,
+    end_date: date,
+    max_articles_per_newspaper: int = 50,
+    db: Session = None
+) -> Dict[str, Any]:
+    """
+    Scrape multiple newspapers and store articles WITHOUT processing.
+    
+    Args:
+        newspapers: List of newspaper keys to scrape
+        start_date: Start date for scraping
+        end_date: End date for scraping
+        max_articles_per_newspaper: Maximum articles per newspaper
+        db: Database session
+        
+    Returns:
+        Overall scraping statistics
+    """
+    if not db:
+        from app.database.database import SessionLocal
+        db = SessionLocal()
+        should_close = True
+    else:
+        should_close = False
+    
+    try:
+        scraper = ManualOnlyNewsScraper(db)
+        
+        overall_stats = {
+            "total_scraped": 0,
+            "total_new": 0,
+            "total_duplicates": 0,
+            "newspapers": {},
+            "errors": []
+        }
+        
+        logger.info(f"Starting manual scraping for {len(newspapers)} newspapers")
+        
+        for newspaper in newspapers:
+            try:
+                logger.info(f"Scraping {newspaper}...")
+                
+                stats = await scraper.scrape_only(
+                    source=newspaper,
+                    start_date=start_date,
+                    end_date=end_date
+                )
+                
+                overall_stats["newspapers"][newspaper] = stats
+                overall_stats["total_new"] += stats["new_articles"]
+                overall_stats["total_duplicates"] += stats["duplicates"]
+                overall_stats["errors"].extend(stats["errors"])
+                
+                logger.info(f"Completed {newspaper}: {stats['new_articles']} new articles")
+                
+            except Exception as e:
+                error_msg = f"Failed to scrape {newspaper}: {str(e)}"
+                logger.error(error_msg)
+                overall_stats["errors"].append(error_msg)
+        
+        overall_stats["total_scraped"] = overall_stats["total_new"] + overall_stats["total_duplicates"]
+        
+        logger.info(
+            f"Manual scraping complete: "
+            f"{overall_stats['total_new']} new articles stored (unprocessed), "
+            f"{overall_stats['total_duplicates']} duplicates"
+        )
+        
+        return overall_stats
+        
+    finally:
+        if should_close:
+            db.close()

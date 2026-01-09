@@ -3,7 +3,7 @@ Enhanced API routes with database integration and scheduler control.
 """
 import logging
 import asyncio
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
 from datetime import date, datetime
 from fastapi import APIRouter, HTTPException, Request, Depends, Query, BackgroundTasks
 from sqlalchemy.orm import Session
@@ -60,287 +60,202 @@ async def analyze_article(request: Request, article: ArticleInput) -> BiasAnalys
 @limiter.limit(f"{settings.rate_limit_per_minute}/minute")
 async def debias_article(request: Request, article: ArticleInput) -> DebiasResponse:
     """
-    Debias article content by replacing biased terms with neutral alternatives.
+    Remove bias from article content and generate neutral version.
     
-    Returns debiased content with word-level change tracking.
+    - **content**: Biased article content
+    - **title**: Optional original title
+    
+    Returns debiased content with change tracking.
     """
     try:
         logger.info(f"Debiasing article with {len(article.content)} characters")
-        result = await bias_detector.debias_article(article.content)
+        
+        # First detect bias
+        analysis = await bias_detector.analyze_bias(article.content, article.title)
+        
+        if not analysis.is_biased:
+            return DebiasResponse(
+                original_content=article.content,
+                debiased_content=article.content,
+                changes_made=[],
+                total_changes=0,
+                bias_reduction_score=0.0
+            )
+        
+        # Convert biased terms to expected format
+        biased_terms = [term.model_dump() for term in analysis.biased_terms]
+        
+        # Then debias
+        result = await bias_detector.debias_article(article.content, biased_terms)
         return result
+        
     except Exception as e:
         logger.error(f"Debias endpoint error: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Debiasing failed: {str(e)}")
-
-
-@router.post("/generate-headline", response_model=HeadlineResponse)
-@limiter.limit(f"{settings.rate_limit_per_minute}/minute")
-async def generate_headline(request: Request, article: ArticleInput) -> HeadlineResponse:
-    """
-    Generate neutral, factual headline for article.
-    """
-    try:
-        logger.info("Generating neutral headline")
-        result = await bias_detector.generate_neutral_headline(
-            article.content,
-            article.title
-        )
-        return result
-    except Exception as e:
-        logger.error(f"Headline generation endpoint error: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Headline generation failed: {str(e)}")
 
 
 @router.post("/full-process", response_model=FullProcessResponse)
 @limiter.limit(f"{settings.rate_limit_per_minute}/minute")
 async def full_process(request: Request, article: ArticleInput) -> FullProcessResponse:
     """
-    Complete processing: analyze, debias, and generate headline.
+    Complete bias-free processing: analyze, debias, and generate headline.
+    
+    - **content**: Article content
+    - **title**: Optional original title
+    
+    Returns complete processing results in one call.
     """
     try:
-        logger.info("Running full processing pipeline")
+        logger.info(f"Full processing article with {len(article.content)} characters")
+        
+        start_time = datetime.now()
         result = await bias_detector.full_process(article.content, article.title)
-        return result
+        
+        processing_time = (datetime.now() - start_time).total_seconds()
+        
+        return FullProcessResponse(
+            analysis=result.analysis,
+            debiased=result.debiased,
+            headline=result.headline,
+            processing_time_seconds=processing_time
+        )
+        
     except Exception as e:
         logger.error(f"Full process endpoint error: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Full processing failed: {str(e)}")
 
 
-# ==================== NEW ENDPOINTS ====================
-
-# Store active scraping jobs status
-scraping_jobs = {}
-
-
-async def run_scraping_task(
-    job_id: str, 
-    sources: List[str], 
-    start_dt: datetime, 
-    end_dt: datetime,
-    section_ids: Optional[dict] = None
-):
-    """
-    Background task to run scraping.
-    
-    Args:
-        job_id: Unique job identifier
-        sources: List of newspaper sources
-        start_dt: Start datetime
-        end_dt: End datetime
-        section_ids: Optional dict mapping source to list of section IDs
-    """
-    try:
-        scraping_jobs[job_id] = {
-            "status": "running",
-            "started_at": datetime.now().isoformat(),
-            "sources": sources,
-            "section_ids": section_ids,
-            "progress": "Scraping in progress..."
-        }
-        
-        scheduler = get_scheduler()
-        stats = await scheduler.run_manual_scraping(sources, start_dt, end_dt, section_ids)
-        
-        scraping_jobs[job_id] = {
-            "status": "completed",
-            "completed_at": datetime.now().isoformat(),
-            "statistics": stats
-        }
-        logger.info(f"Scraping job {job_id} completed: {stats}")
-        
-    except Exception as e:
-        logger.error(f"Scraping job {job_id} failed: {str(e)}", exc_info=True)
-        scraping_jobs[job_id] = {
-            "status": "failed",
-            "error": str(e)
-        }
-
-
-@router.post("/scrape/manual")
-async def manual_scrape(
-    request: Request,
+@router.post("/scrape")
+async def scrape_articles(
     background_tasks: BackgroundTasks,
-    sources: Optional[List[str]] = Query(default=None, alias="sources[]"),
+    newspapers: Optional[List[str]] = Query(None, description="Specific newspapers to scrape"),
     start_date: Optional[date] = Query(None, description="Start date (YYYY-MM-DD)"),
     end_date: Optional[date] = Query(None, description="End date (YYYY-MM-DD)"),
-    prothom_alo_sections: Optional[List[str]] = Query(default=None, alias="prothom_alo_sections[]", description="Section IDs for Prothom Alo")
+    max_articles: int = Query(50, ge=1, le=500, description="Maximum articles per newspaper"),
+    process_immediately: bool = Query(False, description="Process articles immediately after scraping"),
+    db: Session = Depends(get_db)
 ):
     """
-    Manually trigger scraping for specific newspapers and date range.
+    Scrape articles from newspapers and optionally process them.
     
-    - **sources[]**: List of newspaper keys (prothom_alo, daily_star, jugantor, dhaka_tribune, samakal)
-    - **start_date**: Start date for scraping (YYYY-MM-DD)
-    - **end_date**: End date for scraping (YYYY-MM-DD)
-    - **prothom_alo_sections[]**: Optional section IDs for Prothom Alo filtering
-    
-    Section IDs for Prothom Alo:
-    - 22237: সর্বশেষ (Latest)
-    - 17533,17535,17536,17538,22321,22236: রাজনীতি (Politics)
-    - 17690,17693,17691,22329,22327,22330,17694: বাংলাদেশ (Bangladesh)
-    - 17552,17553,22324,22325,22326,26653,17556,17555,23382,23383,17560: বিশ্ব (International)
-    - 17562,22333,22334,22335,35622,17563,35623: খেলা (Sports)
-    - 17736,17737,17739,23426,35867,35868: বিনোদন (Entertainment)
-    
-    If not provided, scrapes all enabled newspapers for today.
-    Returns immediately and runs scraping in background.
+    - **newspapers**: Optional list of newspaper keys (scrapes all if empty)
+    - **start_date**: Optional start date (defaults to today)
+    - **end_date**: Optional end date (defaults to today)
+    - **max_articles**: Maximum articles per newspaper (1-500)
+    - **process_immediately**: Whether to process articles after scraping
     """
     try:
-        # Log received parameters
-        logger.info(f"Manual scraping API called:")
-        logger.info(f"  - sources (raw): {sources}")
-        logger.info(f"  - start_date: {start_date}")
-        logger.info(f"  - end_date: {end_date}")
-        logger.info(f"  - prothom_alo_sections: {prothom_alo_sections}")
+        from app.services.scraper import NewsScraper
+        scraper = NewsScraper()
         
-        # Also try to get sources without [] if the alias doesn't work
-        if not sources:
-            query_params = dict(request.query_params)
-            logger.info(f"  - Query params: {query_params}")
-            if 'sources[]' in query_params:
-                sources_raw = request.query_params.getlist('sources[]')
-                sources = sources_raw if sources_raw else None
-                logger.info(f"  - Found sources[] in query: {sources}")
+        # Set default dates if not provided
+        if not start_date:
+            start_date = date.today()
+        if not end_date:
+            end_date = date.today()
         
-        # Try to get prothom_alo_sections if not already retrieved
-        if not prothom_alo_sections:
-            query_params = dict(request.query_params)
-            if 'prothom_alo_sections[]' in query_params:
-                prothom_alo_sections = request.query_params.getlist('prothom_alo_sections[]')
-                logger.info(f"  - Found prothom_alo_sections[] in query: {prothom_alo_sections}")
+        # Validate date range
+        if start_date > end_date:
+            raise HTTPException(status_code=400, detail="Start date cannot be after end date")
         
-        # Validate sources
-        if sources:
-            valid_sources = get_all_newspaper_keys()
-            invalid = [s for s in sources if s not in valid_sources]
+        # Get newspaper keys
+        if not newspapers:
+            newspapers = get_all_newspaper_keys()
+        else:
+            # Validate provided newspapers
+            valid_newspapers = get_all_newspaper_keys()
+            invalid = [n for n in newspapers if n not in valid_newspapers]
             if invalid:
-                raise HTTPException(
-                    status_code=400,
-                    detail=f"Invalid sources: {invalid}. Valid: {valid_sources}"
-                )
+                raise HTTPException(status_code=400, detail=f"Invalid newspapers: {invalid}")
         
-        # Convert dates to datetime
-        start_dt = datetime.combine(start_date, datetime.min.time()) if start_date else None
-        end_dt = datetime.combine(end_date, datetime.max.time()) if end_date else None
-        
-        # Prepare section_ids dict
-        section_ids_dict = {}
-        if prothom_alo_sections and 'prothom_alo' in (sources or []):
-            section_ids_dict['prothom_alo'] = prothom_alo_sections
-            logger.info(f"  - Will use {len(prothom_alo_sections)} section groups for Prothom Alo")
-        
-        # Generate job ID
-        job_id = f"scrape_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
-        
-        logger.info(f"Starting background scraping job {job_id}")
-        logger.info(f"  - sources={sources}")
-        logger.info(f"  - dates={start_dt} to {end_dt}")
-        logger.info(f"  - section_ids={section_ids_dict}")
+        logger.info(f"Starting scrape for {len(newspapers)} newspapers, dates: {start_date} to {end_date}")
         
         # Start scraping in background
         background_tasks.add_task(
-            run_scraping_task, 
-            job_id, 
-            sources or [], 
-            start_dt, 
-            end_dt,
-            section_ids_dict or None
+            scraper.scrape_multiple_newspapers,
+            newspapers=newspapers,
+            start_date=start_date,
+            end_date=end_date,
+            max_articles_per_newspaper=max_articles,
+            process_after_scraping=process_immediately
         )
         
         return {
             "status": "started",
-            "job_id": job_id,
-            "message": f"Scraping started in background for {len(sources) if sources else 'all'} newspaper(s).",
-            "sources": sources,
-            "date_range": {
-                "start": start_date.isoformat() if start_date else None,
-                "end": end_date.isoformat() if end_date else None
-            },
-            "prothom_alo_sections": prothom_alo_sections if prothom_alo_sections else "using defaults"
+            "message": f"Scraping started for {len(newspapers)} newspapers",
+            "newspapers": newspapers,
+            "date_range": f"{start_date} to {end_date}",
+            "max_articles_per_newspaper": max_articles,
+            "process_immediately": process_immediately
         }
-    
+        
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Manual scrape error: {str(e)}", exc_info=True)
+        logger.error(f"Scrape endpoint error: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Scraping failed: {str(e)}")
-
-
-@router.get("/scrape/status/{job_id}")
-async def get_scraping_status(job_id: str):
-    """Get status of a scraping job."""
-    if job_id not in scraping_jobs:
-        raise HTTPException(status_code=404, detail="Job not found")
-    return scraping_jobs[job_id]
-
-
-@router.get("/scrape/jobs")
-async def get_all_scraping_jobs():
-    """Get all scraping jobs."""
-    return scraping_jobs
 
 
 @router.get("/articles")
 async def get_articles(
     db: Session = Depends(get_db),
-    source: Optional[str] = Query(None, description="Filter by newspaper source"),
-    is_biased: Optional[bool] = Query(None, description="Filter by bias status"),
+    skip: int = Query(0, ge=0),
+    limit: int = Query(10, ge=1, le=100),
     processed: Optional[bool] = Query(None, description="Filter by processing status"),
-    skip: int = Query(0, ge=0, description="Number of records to skip"),
-    limit: int = Query(20, ge=1, le=100, description="Number of records to return")
+    biased: Optional[bool] = Query(None, description="Filter by bias status"),
+    source: Optional[str] = Query(None, description="Filter by news source")
 ):
     """
-    Get articles from database with filtering and pagination.
+    Get articles with filtering and pagination.
     
-    Returns article list with bias analysis and debiasing results.
+    - **skip**: Number of articles to skip
+    - **limit**: Maximum articles to return (1-100)
+    - **processed**: Filter by processing status
+    - **biased**: Filter by bias detection result
+    - **source**: Filter by news source
     """
     try:
         query = db.query(Article)
         
         # Apply filters
-        if source:
-            query = query.filter(Article.source == source)
-        if is_biased is not None:
-            query = query.filter(Article.is_biased == is_biased)
         if processed is not None:
             query = query.filter(Article.processed == processed)
+        if biased is not None:
+            query = query.filter(Article.is_biased == biased)
+        if source:
+            query = query.filter(Article.source == source)
         
         # Get total count
         total = query.count()
         
-        # Apply pagination
-        articles = query.order_by(Article.scraped_at.desc()).offset(skip).limit(limit).all()
+        # Get articles with pagination
+        articles = query.order_by(Article.created_at.desc()).offset(skip).limit(limit).all()
         
-        # Format response
+        # Convert to response format
         result = []
         for article in articles:
             result.append({
                 "id": article.id,
+                "title": article.title,
+                "content": article.original_content[:500] + "..." if len(article.original_content) > 500 else article.original_content,
                 "source": article.source,
                 "url": article.url,
-                "title": article.title,
-                "original_content": article.original_content,
                 "published_date": article.published_date.isoformat() if article.published_date else None,
-                "scraped_at": article.scraped_at.isoformat(),
+                "author": article.author,
+                "processed": article.processed,
                 "is_biased": article.is_biased,
                 "bias_score": article.bias_score,
-                "bias_summary": article.bias_summary,
-                "biased_terms": article.biased_terms,
-                "debiased_content": article.debiased_content,
-                "changes_made": article.changes_made,
-                "total_changes": article.total_changes,
-                "recommended_headline": article.recommended_headline,
-                "processed": article.processed,
                 "processed_at": article.processed_at.isoformat() if article.processed_at else None,
-                "processing_error": article.processing_error
+                "created_at": article.created_at.isoformat()
             })
         
         return {
+            "articles": result,
             "total": total,
             "skip": skip,
-            "limit": limit,
-            "articles": result
+            "limit": limit
         }
-    
+        
     except Exception as e:
         logger.error(f"Get articles error: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Failed to fetch articles: {str(e)}")
@@ -349,7 +264,9 @@ async def get_articles(
 @router.get("/articles/{article_id}")
 async def get_article(article_id: int, db: Session = Depends(get_db)):
     """
-    Get detailed information for a specific article including full bias analysis.
+    Get detailed information about a specific article.
+    
+    - **article_id**: Article ID
     """
     try:
         article = db.query(Article).filter(Article.id == article_id).first()
@@ -359,26 +276,29 @@ async def get_article(article_id: int, db: Session = Depends(get_db)):
         
         return {
             "id": article.id,
+            "title": article.title,
+            "content": article.original_content,
+            "debiased_content": article.debiased_content,
             "source": article.source,
             "url": article.url,
-            "title": article.title,
-            "original_content": article.original_content,
             "published_date": article.published_date.isoformat() if article.published_date else None,
-            "scraped_at": article.scraped_at.isoformat(),
+            "author": article.author,
+            "category": article.category,
+            "processed": article.processed,
+            "processed_at": article.processed_at.isoformat() if article.processed_at else None,
+            "processing_error": article.processing_error,
             "is_biased": article.is_biased,
             "bias_score": article.bias_score,
             "bias_summary": article.bias_summary,
             "biased_terms": article.biased_terms,
-            "debiased_content": article.debiased_content,
             "changes_made": article.changes_made,
             "total_changes": article.total_changes,
             "generated_headlines": article.generated_headlines,
             "recommended_headline": article.recommended_headline,
-            "processed": article.processed,
-            "processed_at": article.processed_at.isoformat() if article.processed_at else None,
-            "processing_error": article.processing_error
+            "created_at": article.created_at.isoformat(),
+            "updated_at": article.updated_at.isoformat() if article.updated_at else None
         }
-    
+        
     except HTTPException:
         raise
     except Exception as e:
@@ -389,8 +309,9 @@ async def get_article(article_id: int, db: Session = Depends(get_db)):
 @router.post("/articles/{article_id}/reprocess")
 async def reprocess_article(article_id: int, db: Session = Depends(get_db)):
     """
-    Re-process a specific article to apply debiasing again.
-    Useful after code updates to fix articles that weren't properly debiased.
+    Reprocess a specific article (useful after fixing bugs).
+    
+    - **article_id**: Article ID to reprocess
     """
     try:
         article = db.query(Article).filter(Article.id == article_id).first()
@@ -586,3 +507,258 @@ async def get_statistics(db: Session = Depends(get_db)):
     except Exception as e:
         logger.error(f"Get statistics error: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Failed to fetch statistics: {str(e)}")
+
+
+# Enhanced batch processing routes with TOON format optimization
+from app.models.enhanced_schemas import (
+    BatchArticleInput,
+    BatchBiasAnalysisResponse,
+    EnhancedProcessingStats
+)
+from app.services.enhanced_bias_detector import EnhancedBiasDetectorService
+from app.services.enhanced_article_processor import EnhancedArticleProcessor
+
+
+@router.post("/enhanced/analyze-batch", response_model=BatchBiasAnalysisResponse)
+@limiter.limit(f"{settings.rate_limit_per_minute}/minute")
+async def analyze_articles_batch(
+    request: BatchArticleInput,
+    db: Session = Depends(get_db)
+) -> BatchBiasAnalysisResponse:
+    """
+    Analyze multiple articles for bias in a single LLM call with TOON format optimization.
+    
+    Features:
+    - Processes up to 20 articles per request
+    - Uses TOON format for 30-60% token reduction
+    - Single LLM call for entire batch
+    - Optimized for cost-effectiveness
+    
+    Args:
+        request: Batch article input with up to 20 articles
+        db: Database session
+        
+    Returns:
+        Batch bias analysis response with results for all articles
+        
+    Raises:
+        HTTPException: If processing fails
+    """
+    try:
+        logger.info(f"Received batch analysis request for {len(request.articles)} articles")
+        
+        # Initialize enhanced bias detector
+        enhanced_detector = EnhancedBiasDetectorService()
+        
+        # Convert input articles to format suitable for analysis
+        articles_data = []
+        for idx, article in enumerate(request.articles):
+            articles_data.append({
+                "id": f"article_{idx}",  # Generate unique ID
+                "title": article.title or "Untitled",
+                "content": article.content,
+                "source": "user_input"
+            })
+        
+        # Perform batch bias analysis
+        result = await enhanced_detector.analyze_bias_batch(
+            articles=articles_data,
+            use_toon_format=request.use_toon_format
+        )
+        
+        logger.info(
+            f"Batch analysis complete: {result.total_processed} articles, "
+            f"format: {result.format_used}, token savings: {result.token_savings}%"
+        )
+        
+        return result
+        
+    except Exception as e:
+        logger.error(f"Batch analysis failed: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Batch analysis failed: {str(e)}")
+
+
+@router.post("/enhanced/process-scraped-batch", response_model=EnhancedProcessingStats)
+async def process_scraped_articles_batch(
+    max_articles: int = Query(20, ge=1, le=100, description="Maximum articles to process"),
+    use_enhanced: bool = Query(True, description="Use enhanced TOON-based processing"),
+    db: Session = Depends(get_db)
+) -> EnhancedProcessingStats:
+    """
+    Process scraped articles from database in optimized batches with TOON format.
+    
+    Features:
+    - Processes up to 20 articles per LLM call
+    - Uses TOON format for token efficiency (30-60% reduction)
+    - Batch processing for cost optimization
+    - Automatic fallback to individual processing
+    - Maximum 20 articles per batch for LLM analysis
+    
+    Args:
+        max_articles: Maximum number of articles to process (1-100)
+        use_enhanced: Whether to use enhanced TOON-based processing
+        db: Database session
+        
+    Returns:
+        Processing statistics with batch metrics and token savings
+        
+    Raises:
+        HTTPException: If processing fails
+    """
+    try:
+        logger.info(f"Processing scraped articles: max={max_articles}, enhanced={use_enhanced}")
+        
+        # Initialize enhanced processor
+        processor = EnhancedArticleProcessor(db)
+        
+        # Process articles with batch optimization
+        stats = await processor.process_unprocessed_articles(limit=max_articles)
+        
+        logger.info(
+            f"Scraped articles processing complete: "
+            f"{stats['total_processed']} processed, "
+            f"{stats['successful']} successful, "
+            f"{stats['biased_found']} biased found"
+        )
+        
+        # Convert stats to response model
+        return EnhancedProcessingStats(
+            total_processed=stats["total_processed"],
+            successful=stats["successful"],
+            failed=stats["failed"],
+            biased_found=stats["biased_found"],
+            total_changes=stats["total_changes"],
+            batches_processed=stats.get("batches_processed", 0),
+            format_used=stats["format_used"],
+            token_savings_avg=stats.get("token_savings_avg", 0),
+            processing_time_seconds=stats.get("processing_time_seconds")
+        )
+        
+    except Exception as e:
+        logger.error(f"Scraped articles processing failed: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Processing failed: {str(e)}")
+
+
+@router.get("/enhanced/toon-demo")
+async def toon_format_demo() -> dict[str, Any]:
+    """
+    Demonstrate TOON format efficiency compared to JSON for article data.
+    
+    Returns:
+        Comparison showing token savings achieved by TOON format
+        with sample article data
+    """
+    try:
+        from app.utils.enhanced_toon_formatter import enhanced_toon_formatter
+        
+        # Sample article data for demonstration
+        sample_articles = [
+            {
+                "id": "1",
+                "title": "রাজনৈতিক দলের নেতা বলেছেন",
+                "content": "আজকের রাজনৈতিক পরিস্থিতি খুবই উত্তপ্ত। বিরোধী দলগুলো সরকারের বিরুদ্ধে কঠোর অবস্থান নিয়েছে।",
+                "source": "prothom_alo",
+                "date": "2024-01-09"
+            },
+            {
+                "id": "2", 
+                "title": "অর্থনৈতিক প্রবৃদ্ধির খবর",
+                "content": "দেশের অর্থনীতি দ্রুত উন্নতি করছে। বিশেষজ্ঞরা বলছেন এই প্রবৃদ্ধি টেকসই হবে।",
+                "source": "jugantor",
+                "date": "2024-01-09"
+            }
+        ]
+        
+        # Convert to TOON format
+        toon_output = enhanced_toon_formatter.format_article_batch_tabular(sample_articles, max_articles=2)
+        
+        # Calculate token savings
+        import json
+        original_json = json.dumps({"articles": sample_articles}, separators=(',', ':'))
+        savings = enhanced_toon_formatter.calculate_token_savings({"articles": sample_articles}, toon_output)
+        
+        return {
+            "json_format": original_json,
+            "toon_format": toon_output,
+            "token_savings": savings,
+            "efficiency_improvement": f"{savings['savings_percent']}% fewer tokens",
+            "description": "TOON format reduces token usage by declaring keys once and streaming values as rows",
+            "benefits": [
+                "30-60% reduction in token usage",
+                "More efficient LLM processing",
+                "Lower API costs",
+                "Faster response times",
+                "Better for batch processing"
+            ]
+        }
+        
+    except Exception as e:
+        logger.error(f"TOON demo failed: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"TOON demo failed: {str(e)}")
+
+
+@router.get("/enhanced/stats")
+async def get_enhanced_processing_stats(db: Session = Depends(get_db)) -> dict[str, Any]:
+    """
+    Get enhanced processing statistics including TOON format usage and token savings.
+    
+    Args:
+        db: Database session
+        
+    Returns:
+        Processing statistics with enhanced metrics
+        
+    Raises:
+        HTTPException: If stats retrieval fails
+    """
+    try:
+        from app.database.models import Article
+        
+        # Get basic article statistics
+        total_articles = db.query(Article).count()
+        processed_articles = db.query(Article).filter(Article.processed == True).count()
+        unprocessed_articles = db.query(Article).filter(Article.processed == False).count()
+        biased_articles = db.query(Article).filter(Article.is_biased == True).count()
+        
+        # Get recent processing errors
+        recent_errors = db.query(Article).filter(
+            Article.processing_error.isnot(None)
+        ).order_by(Article.processed_at.desc()).limit(5).all()
+        
+        error_summary = []
+        for article in recent_errors:
+            error_summary.append({
+                "article_id": article.id,
+                "title": article.title,
+                "error": article.processing_error,
+                "processed_at": article.processed_at.isoformat() if article.processed_at else None
+            })
+        
+        return {
+            "total_articles": total_articles,
+            "processed_articles": processed_articles,
+            "unprocessed_articles": unprocessed_articles,
+            "biased_articles": biased_articles,
+            "processing_rate": round((processed_articles / total_articles * 100) if total_articles > 0 else 0, 2),
+            "bias_detection_rate": round((biased_articles / processed_articles * 100) if processed_articles > 0 else 0, 2),
+            "recent_errors": error_summary,
+            "system_status": "operational",
+            "enhanced_features": {
+                "toon_format": True,
+                "batch_processing": True,
+                "max_articles_per_batch": 20,
+                "token_reduction": "30-60%",
+                "cost_optimization": "Significant API cost reduction",
+                "llm_efficiency": "Improved response times"
+            },
+            "usage_recommendations": [
+                "Use TOON format for batch processing (30-60% token savings)",
+                "Process articles in batches of 20 for optimal efficiency",
+                "Monitor token savings in processing statistics",
+                "Use enhanced endpoints for cost-effective processing"
+            ]
+        }
+        
+    except Exception as e:
+        logger.error(f"Enhanced stats retrieval failed: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Stats retrieval failed: {str(e)}")

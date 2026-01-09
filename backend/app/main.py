@@ -83,8 +83,12 @@ app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 app.add_middleware(SlowAPIMiddleware)
 
-# Include API routes
+# Include main API routes
 app.include_router(router)
+
+# Include manual processing routes (NEW - for on-demand bias analysis)
+from app.api.manual_processing import router as manual_router
+app.include_router(manual_router)
 
 
 @app.exception_handler(Exception)

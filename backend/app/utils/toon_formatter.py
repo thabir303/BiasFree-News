@@ -4,7 +4,11 @@ Reduces token usage by 30-60% compared to JSON.
 """
 
 from typing import Any, Dict, List, Optional
-from toon import encode, decode, EncodeOptions
+try:
+    from toon import encode, decode, EncodeOptions
+except ImportError:
+    # Use mock implementation if toon is not available
+    from toon_mock import encode, decode, EncodeOptions
 
 
 class ToonFormatter:
