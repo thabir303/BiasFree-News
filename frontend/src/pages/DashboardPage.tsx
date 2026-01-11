@@ -8,7 +8,7 @@ const DashboardPage = () => {
 
   useEffect(() => {
     fetchDashboardData();
-    const interval = setInterval(fetchDashboardData, 30000); // Refresh every 30s
+    const interval = setInterval(fetchDashboardData, 300000); 
     return () => clearInterval(interval);
   }, []);
 
@@ -131,6 +131,65 @@ const DashboardPage = () => {
               <div className="text-xs text-gray-500 mt-1">Automatic scraping enabled</div>
             </div>
           </div>
+
+          {/* Last Run Information */}
+          {schedulerStatus?.last_run && (
+            <div className="mt-6 bg-gray-800/50 rounded-lg p-4 border border-gray-700">
+              <div className="text-sm text-gray-400 mb-3 font-semibold">Last Scraping Run</div>
+              <div className="grid md:grid-cols-4 gap-4">
+                <div>
+                  <div className="text-xs text-gray-500 mb-1">Status</div>
+                  <div className={`text-sm font-semibold ${
+                    schedulerStatus.last_run.status === 'success' ? 'text-green-400' :
+                    schedulerStatus.last_run.status === 'failed' ? 'text-red-400' :
+                    'text-yellow-400'
+                  }`}>
+                    {schedulerStatus.last_run.status === 'success' ? '✅ Success' :
+                     schedulerStatus.last_run.status === 'failed' ? '❌ Failed' :
+                     '⚠️ Partial'}
+                  </div>
+                </div>
+                <div>
+                  <div className="text-xs text-gray-500 mb-1">Started At</div>
+                  <div className="text-sm text-white">
+                    {schedulerStatus.last_run.started_at
+                      ? new Date(schedulerStatus.last_run.started_at).toLocaleString('en-US', {
+                          dateStyle: 'short',
+                          timeStyle: 'short',
+                        })
+                      : 'N/A'}
+                  </div>
+                </div>
+                <div>
+                  <div className="text-xs text-gray-500 mb-1">Articles Scraped</div>
+                  <div className="text-sm font-semibold text-blue-400">
+                    {schedulerStatus.last_run.articles_scraped || 0}
+                  </div>
+                </div>
+                <div>
+                  <div className="text-xs text-gray-500 mb-1">Duration</div>
+                  <div className="text-sm text-white">
+                    {schedulerStatus.last_run.completed_at && schedulerStatus.last_run.started_at
+                      ? `${Math.round(
+                          (new Date(schedulerStatus.last_run.completed_at).getTime() -
+                           new Date(schedulerStatus.last_run.started_at).getTime()) / 1000
+                        )}s`
+                      : 'N/A'}
+                  </div>
+                </div>
+              </div>
+              {schedulerStatus.last_run.errors && schedulerStatus.last_run.errors.length > 0 && (
+                <div className="mt-3 pt-3 border-t border-gray-700">
+                  <div className="text-xs text-red-400 mb-1">Errors:</div>
+                  <div className="text-xs text-gray-400 space-y-1">
+                    {schedulerStatus.last_run.errors.slice(0, 3).map((err: string, idx: number) => (
+                      <div key={idx}>• {err}</div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Source Distribution */}

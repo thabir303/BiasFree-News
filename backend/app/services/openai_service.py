@@ -211,9 +211,15 @@ JSON structure:
       "severity": "low/medium/high"
     }
   ],
-  "summary": "analysis summary",
+  "summary": "brief analysis of bias found",
   "confidence": number (0.0-1.0)
 }
+
+IMPORTANT for summary:
+- Write DIRECT analysis, NO meta-commentary
+- DO NOT start with: 'এই সংবাদটি', 'এই নিবন্ধে', 'এই আর্টিকেল', 'এই প্রতিবেদনে'
+- Start directly with the finding (e.g., 'রাজনৈতিক পক্ষপাত লক্ষ্য করা যায়')
+- Keep it concise and factual
 
 Look for: politically charged language, emotional manipulation, sensationalism, one-sided framing."""
         
@@ -227,14 +233,22 @@ Look for: politically charged language, emotional manipulation, sensationalism, 
         }
         toon_input = toon_formatter.to_toon(article_data)
         
-        user_prompt = f"""Article data (TOON format for efficiency):
+        user_prompt = f"""Article data:
 ```toon
 {toon_input}
 ```
 
 Analyze for bias and respond in JSON."""
         
-        logger.info(f"Using TOON format - Original size: ~{len(title or '') + len(truncated_content)} chars, TOON size: {len(toon_input)} chars")
+        # Log the complete prompt for debugging
+        logger.info("=" * 80)
+        logger.info("BIAS DETECTION REQUEST TO LLM")
+        logger.info("=" * 80)
+        logger.info(f"SYSTEM PROMPT:\n{system_prompt}")
+        logger.info("-" * 80)
+        logger.info(f"USER PROMPT:\n{user_prompt}")
+        logger.info("=" * 80)
+        logger.info(f"Token reduction - Original JSON size: ~{len(str(article_data))} chars, TOON size: {len(toon_input)} chars")
         
         response = await self._call_api(system_prompt, user_prompt, "json_object", dynamic_max_tokens=False)
         
@@ -281,14 +295,18 @@ Analyze for bias and respond in JSON."""
             reason = term.get("reason", "Biased term replaced")
             
             if original_term and neutral_term and original_term in debiased_content:
-                # Replace the term
-                debiased_content = debiased_content.replace(original_term, neutral_term)
+                # Count occurrences
+                count = debiased_content.count(original_term)
+                
+                # Replace only the FIRST occurrence to avoid over-replacement
+                debiased_content = debiased_content.replace(original_term, neutral_term, 1)
+                
                 changes.append({
                     "original": original_term,
                     "debiased": neutral_term,
                     "reason": reason
                 })
-                logger.debug(f"Replaced '{original_term}' with '{neutral_term}'")
+                logger.debug(f"Replaced '{original_term}' with '{neutral_term}' (found {count} occurrences, replaced first only)")
         
         logger.info(f"Programmatic debiasing: {len(changes)} changes made")
         

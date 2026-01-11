@@ -4,7 +4,7 @@ Enhanced API routes with database integration and scheduler control.
 import logging
 import asyncio
 from typing import List, Optional, Dict, Any
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from fastapi import APIRouter, HTTPException, Request, Depends, Query, BackgroundTasks
 from sqlalchemy.orm import Session
 from slowapi import Limiter
@@ -196,6 +196,49 @@ async def scrape_articles(
         raise HTTPException(status_code=500, detail=f"Scraping failed: {str(e)}")
 
 
+@router.post("/scrape/manual")
+async def manual_scrape(
+    sources: Optional[List[str]] = Query(None, alias="sources[]"),
+    start_date: Optional[str] = Query(None),
+    end_date: Optional[str] = Query(None),
+    db: Session = Depends(get_db)
+):
+    """
+    Manual scraping endpoint for on-demand article collection.
+    Compatible with frontend query parameters.
+    
+    - **sources**: List of newspaper sources
+    - **start_date**: Start date (YYYY-MM-DD)
+    - **end_date**: End date (YYYY-MM-DD)
+    """
+    try:
+        from app.services.scheduler import get_scheduler
+        
+        # Parse dates
+        start_dt = datetime.strptime(start_date, "%Y-%m-%d") if start_date else datetime.now()
+        end_dt = datetime.strptime(end_date, "%Y-%m-%d") if end_date else datetime.now()
+        
+        # Get scheduler instance
+        scheduler = get_scheduler()
+        
+        # Trigger manual scraping (without automatic processing)
+        result = await scheduler.run_manual_scraping(
+            sources=sources,
+            start_date=start_dt,
+            end_date=end_dt
+        )
+        
+        return {
+            "status": "completed",
+            "message": "Scraping completed successfully",
+            "statistics": result
+        }
+        
+    except Exception as e:
+        logger.error(f"Manual scraping error: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Manual scraping failed: {str(e)}")
+
+
 @router.get("/articles")
 async def get_articles(
     db: Session = Depends(get_db),
@@ -238,13 +281,15 @@ async def get_articles(
                 "id": article.id,
                 "title": article.title,
                 "content": article.original_content[:500] + "..." if len(article.original_content) > 500 else article.original_content,
+                "original_content": article.original_content[:500] + "..." if len(article.original_content) > 500 else article.original_content,
                 "source": article.source,
                 "url": article.url,
                 "published_date": article.published_date.isoformat() if article.published_date else None,
-                "author": article.author,
+                "scraped_at": article.scraped_at.isoformat() if article.scraped_at else article.created_at.isoformat(),
                 "processed": article.processed,
-                "is_biased": article.is_biased,
-                "bias_score": article.bias_score,
+                "is_biased": article.is_biased if article.is_biased is not None else False,
+                "bias_score": article.bias_score if article.bias_score is not None else 0.0,
+                "total_changes": article.total_changes if article.total_changes else 0,
                 "processed_at": article.processed_at.isoformat() if article.processed_at else None,
                 "created_at": article.created_at.isoformat()
             })
@@ -278,21 +323,21 @@ async def get_article(article_id: int, db: Session = Depends(get_db)):
             "id": article.id,
             "title": article.title,
             "content": article.original_content,
+            "original_content": article.original_content,
             "debiased_content": article.debiased_content,
             "source": article.source,
             "url": article.url,
             "published_date": article.published_date.isoformat() if article.published_date else None,
-            "author": article.author,
-            "category": article.category,
+            "scraped_at": article.scraped_at.isoformat() if article.scraped_at else article.created_at.isoformat(),
             "processed": article.processed,
             "processed_at": article.processed_at.isoformat() if article.processed_at else None,
             "processing_error": article.processing_error,
-            "is_biased": article.is_biased,
-            "bias_score": article.bias_score,
+            "is_biased": article.is_biased if article.is_biased is not None else False,
+            "bias_score": article.bias_score if article.bias_score is not None else 0.0,
             "bias_summary": article.bias_summary,
-            "biased_terms": article.biased_terms,
-            "changes_made": article.changes_made,
-            "total_changes": article.total_changes,
+            "biased_terms": article.biased_terms if article.biased_terms else [],
+            "changes_made": article.changes_made if article.changes_made else [],
+            "total_changes": article.total_changes if article.total_changes else 0,
             "generated_headlines": article.generated_headlines,
             "recommended_headline": article.recommended_headline,
             "created_at": article.created_at.isoformat(),
@@ -304,6 +349,90 @@ async def get_article(article_id: int, db: Session = Depends(get_db)):
     except Exception as e:
         logger.error(f"Get article error: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Failed to fetch article: {str(e)}")
+
+
+@router.post("/articles/{article_id}/process")
+async def process_article_endpoint(article_id: int, db: Session = Depends(get_db)):
+    """
+    Process a single unprocessed article for bias detection and debiasing.
+    
+    - **article_id**: Article ID to process
+    
+    Returns the updated article with bias analysis results.
+    """
+    try:
+        article = db.query(Article).filter(Article.id == article_id).first()
+        
+        if not article:
+            raise HTTPException(status_code=404, detail="Article not found")
+        
+        if article.processed:
+            logger.info(f"Article {article_id} already processed, returning current data")
+            # Return current article data
+            return {
+                "id": article.id,
+                "title": article.title,
+                "source": article.source,
+                "url": article.url,
+                "original_content": article.original_content,
+                "debiased_content": article.debiased_content,
+                "published_date": article.published_date.isoformat() if article.published_date else None,
+                "scraped_at": article.scraped_at.isoformat() if article.scraped_at else article.created_at.isoformat(),
+                "processed": article.processed,
+                "processed_at": article.processed_at.isoformat() if article.processed_at else None,
+                "processing_error": article.processing_error,
+                "is_biased": article.is_biased if article.is_biased is not None else False,
+                "bias_score": article.bias_score if article.bias_score is not None else 0.0,
+                "bias_summary": article.bias_summary,
+                "biased_terms": article.biased_terms,
+                "changes_made": article.changes_made,
+                "total_changes": article.total_changes if article.total_changes else 0,
+                "recommended_headline": article.recommended_headline,
+                "generated_headlines": article.generated_headlines,
+                "created_at": article.created_at.isoformat(),
+                "updated_at": article.updated_at.isoformat() if article.updated_at else None
+            }
+        
+        # Process the article
+        logger.info(f"Processing article {article_id} for bias detection...")
+        processor = ArticleProcessor(db)
+        result = await processor.process_article(article)
+        
+        # Refresh article from db to get updated data
+        db.refresh(article)
+        
+        logger.info(f"Article {article_id} processed: biased={result['biased']}, changes={result['changes_made']}")
+        
+        # Return updated article data
+        return {
+            "id": article.id,
+            "title": article.title,
+            "source": article.source,
+            "url": article.url,
+            "original_content": article.original_content,
+            "debiased_content": article.debiased_content,
+            "published_date": article.published_date.isoformat() if article.published_date else None,
+            "scraped_at": article.scraped_at.isoformat() if article.scraped_at else article.created_at.isoformat(),
+            "processed": article.processed,
+            "processed_at": article.processed_at.isoformat() if article.processed_at else None,
+            "processing_error": article.processing_error,
+            "is_biased": article.is_biased if article.is_biased is not None else False,
+            "bias_score": article.bias_score if article.bias_score is not None else 0.0,
+            "bias_summary": article.bias_summary,
+            "biased_terms": article.biased_terms,
+            "changes_made": article.changes_made,
+            "total_changes": article.total_changes if article.total_changes else 0,
+            "recommended_headline": article.recommended_headline,
+            "generated_headlines": article.generated_headlines,
+            "created_at": article.created_at.isoformat(),
+            "updated_at": article.updated_at.isoformat() if article.updated_at else None
+        }
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Process article error: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to process article: {str(e)}")
 
 
 @router.post("/articles/{article_id}/reprocess")
@@ -393,8 +522,8 @@ async def reprocess_all_biased_articles(
 
 
 @router.get("/scheduler/status")
-async def get_scheduler_status():
-    """Get scheduler status and recent job history."""
+async def get_scheduler_status(db: Session = Depends(get_db)):
+    """Get scheduler status, recent job history, and last run details."""
     try:
         scheduler = get_scheduler()
         
@@ -413,15 +542,47 @@ async def get_scheduler_status():
                 if job_next_run and (next_run is None or job_next_run < next_run):
                     next_run = job_next_run
         
+        # Get last run information from database
+        last_run = scheduler.get_last_run_info(db)
+        
         return {
             "running": scheduler._is_running,
             "next_run": next_run,
-            "jobs": jobs
+            "jobs": jobs,
+            "last_run": last_run
         }
     
     except Exception as e:
         logger.error(f"Scheduler status error: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Failed to get scheduler status: {str(e)}")
+
+
+@router.post("/scheduler/test-run")
+async def schedule_test_run(
+    minutes: int = Query(1, ge=1, le=60, description="Minutes from now (1-60)"),
+    db: Session = Depends(get_db)
+):
+    """Schedule a one-time test scraping run after specified minutes."""
+    try:
+        scheduler = get_scheduler()
+        
+        if not scheduler._is_running:
+            raise HTTPException(status_code=503, detail="Scheduler is not running")
+        
+        run_time = scheduler.schedule_test_run(minutes)
+        
+        return {
+            "status": "scheduled",
+            "message": f"Test scraping scheduled in {minutes} minute(s)",
+            "scheduled_time": run_time.isoformat(),
+            "scheduled_time_bdt": (run_time + timedelta(hours=6)).strftime("%Y-%m-%d %I:%M %p BDT")
+        }
+    
+    except RuntimeError as e:
+        raise HTTPException(status_code=503, detail=str(e))
+    except Exception as e:
+        logger.error(f"Test run scheduling error: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to schedule test run: {str(e)}")
 
 
 @router.get("/scheduler/logs")

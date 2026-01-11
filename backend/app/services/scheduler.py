@@ -57,6 +57,43 @@ class SchedulerService:
         self._is_running = False
         logger.info("Scheduler stopped")
     
+    def schedule_test_run(self, minutes_from_now: int = 1):
+        """Schedule a one-time test run after specified minutes."""
+        if not self._is_running:
+            raise RuntimeError("Scheduler not running")
+        
+        run_time = datetime.now() + timedelta(minutes=minutes_from_now)
+        
+        self.scheduler.add_job(
+            self.daily_scrape_and_process,
+            'date',
+            run_date=run_time,
+            id='test_scraping',
+            name='Test Scraping Run',
+            replace_existing=True
+        )
+        
+        logger.info(f"Test scraping scheduled at {run_time.strftime('%Y-%m-%d %H:%M:%S')}")
+        return run_time
+    
+    def get_last_run_info(self, db: Session):
+        """Get information about the last scheduler run."""
+        last_log = db.query(SchedulerLog).order_by(SchedulerLog.started_at.desc()).first()
+        
+        if not last_log:
+            return None
+        
+        return {
+            "job_name": last_log.job_name,
+            "status": last_log.status,
+            "started_at": last_log.started_at.isoformat() if last_log.started_at else None,
+            "completed_at": last_log.completed_at.isoformat() if last_log.completed_at else None,
+            "articles_scraped": last_log.articles_scraped,
+            "articles_processed": last_log.articles_processed,
+            "errors": last_log.errors,
+            "error_message": last_log.error_message
+        }
+    
     async def daily_scrape_and_process(self):
         """
         Daily job: Scrape all enabled newspapers and process articles.
@@ -118,18 +155,9 @@ class SchedulerService:
                     logger.error(error_msg)
                     errors.append(error_msg)
             
-            # Process scraped articles
-            logger.info("Processing scraped articles...")
-            processor = ArticleProcessor(db)
-            
-            process_stats = await processor.process_unprocessed_articles(limit=50)
-            total_processed = process_stats["successful"]
-            
-            logger.info(
-                f"Processing complete: {process_stats['successful']} successful, "
-                f"{process_stats['failed']} failed, "
-                f"{process_stats['biased_found']} biased articles"
-            )
+            # Note: Automatic processing disabled - articles will be processed manually
+            logger.info("Scraping complete. Articles saved to database for manual processing.")
+            total_processed = 0
             
             # Update log
             log.status = "success" if not errors else "partial"
@@ -257,12 +285,10 @@ class SchedulerService:
                     logger.error(error_msg, exc_info=True)
                     total_stats["errors"].append(error_msg)
             
-            # Process all scraped articles (with rate limiting built into processor)
-            processor = ArticleProcessor(db)
-            process_stats = await processor.process_unprocessed_articles(limit=200)
-            total_stats["total_processed"] = process_stats["successful"]
-            total_stats["processing"] = process_stats
-            logger.info(f"LLM processing complete: {process_stats['successful']}/{process_stats['total_processed']} articles processed")
+            # Note: Automatic processing disabled - articles will be processed manually
+            logger.info("Manual scraping complete. Articles saved to database for manual bias analysis.")
+            total_stats["total_processed"] = 0
+            total_stats["processing"] = {"successful": 0, "total_processed": 0, "message": "Automatic processing disabled"}
             
             return total_stats
         

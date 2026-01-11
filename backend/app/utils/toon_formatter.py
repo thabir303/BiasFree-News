@@ -4,11 +4,7 @@ Reduces token usage by 30-60% compared to JSON.
 """
 
 from typing import Any, Dict, List, Optional
-try:
-    from toon import encode, decode, EncodeOptions
-except ImportError:
-    # Use mock implementation if toon is not available
-    from toon_mock import encode, decode, EncodeOptions
+from py_toon_format import encode, decode
 
 
 class ToonFormatter:
@@ -36,12 +32,8 @@ class ToonFormatter:
         Returns:
             TOON-formatted string
         """
-        options: EncodeOptions = {
-            "indent": self.indent,
-            "delimiter": self.delimiter,
-            "lengthMarker": "#" if use_length_marker else False,
-        }
-        return encode(data, options)
+        # py-toon-format's encode function takes data directly
+        return encode(data)
     
     def from_toon(self, toon_str: str) -> Any:
         """

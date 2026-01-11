@@ -82,12 +82,31 @@ class EnhancedNewsScraper:
                         logger.debug(f"Duplicate article skipped: {article_data['url']}")
                         continue
                     
-                    # Convert published_date string to datetime if needed
+                    # Convert published_date to proper datetime object
                     pub_date = article_data.get("published_date")
-                    if pub_date and isinstance(pub_date, str):
-                        try:
-                            pub_date = datetime.strptime(pub_date, "%Y-%m-%d")
-                        except ValueError:
+                    if pub_date:
+                        if isinstance(pub_date, str):
+                            try:
+                                # Try multiple date formats
+                                for fmt in ["%Y-%m-%d", "%Y-%m-%d %H:%M:%S", "%d/%m/%Y", "%d-%m-%Y"]:
+                                    try:
+                                        pub_date = datetime.strptime(pub_date, fmt)
+                                        break
+                                    except ValueError:
+                                        continue
+                                else:
+                                    # If no format worked, set to None
+                                    logger.warning(f"Could not parse date: {pub_date}")
+                                    pub_date = None
+                            except Exception as e:
+                                logger.warning(f"Date parsing error: {e}")
+                                pub_date = None
+                        elif isinstance(pub_date, date) and not isinstance(pub_date, datetime):
+                            # Convert date to datetime
+                            pub_date = datetime.combine(pub_date, datetime.min.time())
+                        elif not isinstance(pub_date, datetime):
+                            # If it's neither string, date, nor datetime, set to None
+                            logger.warning(f"Invalid date type: {type(pub_date)}")
                             pub_date = None
                     
                     # Create new article

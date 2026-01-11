@@ -75,6 +75,16 @@ export interface SchedulerStatus {
         name: string;
         next_run: string | null;
     }>;
+    last_run?: {
+        job_name: string;
+        status: string;
+        started_at: string | null;
+        completed_at: string | null;
+        articles_scraped: number;
+        articles_processed: number;
+        errors: string[] | null;
+        error_message: string | null;
+    };
 }
 
 export interface ManualScrapeRequest {
@@ -141,6 +151,12 @@ export const api = {
     // Get all scraping jobs
     getScrapingJobs: async (): Promise<any> => {
         const response = await apiClient.get('/scrape/jobs');
+        return response.data;
+    },
+
+    // Process single article for bias detection
+    processArticle: async (id: number): Promise<Article> => {
+        const response = await apiClient.post<Article>(`/articles/${id}/process`);
         return response.data;
     },
 };

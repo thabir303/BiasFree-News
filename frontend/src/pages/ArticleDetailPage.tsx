@@ -6,6 +6,7 @@ const ArticleDetailPage = () => {
   const { id } = useParams<{ id: string }>();
   const [article, setArticle] = useState<Article | null>(null);
   const [loading, setLoading] = useState(true);
+  const [processing, setProcessing] = useState(false);
   const [viewMode, setViewMode] = useState<'split' | 'diff'>('split');
 
   useEffect(() => {
@@ -26,13 +27,45 @@ const ArticleDetailPage = () => {
     }
   };
 
-  const highlightText = (text: string, highlights: any[], type: 'biased' | 'debiased') => {
-    if (!highlights || highlights.length === 0) return text;
+  const handleBiasAnalysis = async () => {
+    if (!id || processing) return;
+
+    setProcessing(true);
+    try {
+      const updatedArticle = await api.processArticle(parseInt(id));
+      setArticle(updatedArticle);
+    } catch (error) {
+      console.error('Failed to analyze article:', error);
+      alert('Failed to analyze article. Please try again.');
+    } finally {
+      setProcessing(false);
+    }
+  };
+
+  const formatDate = (dateStr: string | null | undefined) => {
+    if (!dateStr) return 'N/A';
+    try {
+      const date = new Date(dateStr);
+      if (isNaN(date.getTime())) return 'N/A';
+      return date.toLocaleDateString('en-US', {
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric',
+      });
+    } catch {
+      return 'N/A';
+    }
+  };
+
+  const highlightText = (text: string, highlights: any[] | undefined, type: 'biased' | 'debiased') => {
+    if (!text) return '';
+    if (!highlights || !Array.isArray(highlights) || highlights.length === 0) return text;
 
     const spans: Array<{ start: number; end: number; text: string; data: any }> = [];
 
-    if (type === 'biased' && article?.biased_terms) {
+    if (type === 'biased' && article?.biased_terms && Array.isArray(article.biased_terms)) {
       article.biased_terms.forEach((term: any) => {
+        if (!term || !term.term) return;
         const regex = new RegExp(term.term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi');
         let match;
         while ((match = regex.exec(text)) !== null) {
@@ -44,8 +77,9 @@ const ArticleDetailPage = () => {
           });
         }
       });
-    } else if (type === 'debiased' && article?.changes_made) {
+    } else if (type === 'debiased' && article?.changes_made && Array.isArray(article.changes_made)) {
       article.changes_made.forEach((change: any) => {
+        if (!change || !change.debiased) return;
         const regex = new RegExp(change.debiased.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi');
         let match;
         while ((match = regex.exec(text)) !== null) {
@@ -172,7 +206,7 @@ const ArticleDetailPage = () => {
                   📰 {article.source.replace('_', ' ')}
                 </span>
                 <span className="px-3 py-1 bg-gray-800 rounded-full">
-                  📅 {new Date(article.scraped_at).toLocaleDateString()}
+                  📅 {formatDate(article.scraped_at)}
                 </span>
                 {article.url && (
                   <a
@@ -187,12 +221,44 @@ const ArticleDetailPage = () => {
               </div>
             </div>
 
-            {article.is_biased && (
-              <div className={`px-6 py-3 rounded-xl border text-center ${getBiasColor(article.bias_score)}`}>
-                <div className="text-3xl font-bold">{article.bias_score.toFixed(0)}%</div>
-                <div className="text-xs mt-1">Bias Score</div>
-              </div>
-            )}
+            <div className="flex flex-col items-end gap-3">
+              {/* Bias Check Button for Unprocessed Articles */}
+              {!article.processed && (
+                <button
+                  onClick={handleBiasAnalysis}
+                  disabled={processing}
+                  className="px-6 py-3 bg-primary-500 hover:bg-primary-600 disabled:bg-gray-600 disabled:cursor-not-allowed text-white rounded-xl font-semibold transition-colors flex items-center space-x-2"
+                >
+                  {processing ? (
+                    <>
+                      <div className="animate-spin rounded-full h-5 w-5 border-t-2 border-b-2 border-white"></div>
+                      <span>Analyzing...</span>
+                    </>
+                  ) : (
+                    <>
+                      <span>🔍</span>
+                      <span>Analyze for Bias</span>
+                    </>
+                  )}
+                </button>
+              )}
+
+              {/* Bias Score Display */}
+              {article.processed && article.is_biased && (
+                <div className={`px-6 py-3 rounded-xl border text-center ${getBiasColor(article.bias_score)}`}>
+                  <div className="text-3xl font-bold">{article.bias_score.toFixed(0)}%</div>
+                  <div className="text-xs mt-1">Bias Score</div>
+                </div>
+              )}
+
+              {/* No Bias Badge */}
+              {article.processed && !article.is_biased && (
+                <div className="px-6 py-3 rounded-xl border border-green-500/30 bg-green-500/10 text-center">
+                  <div className="text-2xl font-bold text-green-400">✅</div>
+                  <div className="text-xs mt-1 text-green-400">No Bias Detected</div>
+                </div>
+              )}
+            </div>
           </div>
 
           {/* Bias Summary */}
@@ -204,34 +270,62 @@ const ArticleDetailPage = () => {
           )}
         </div>
 
-        {/* View Mode Toggle */}
-        <div className="flex justify-center mb-6">
-          <div className="inline-flex rounded-lg border border-gray-800 bg-gray-900/50 p-1">
-            <button
-              onClick={() => setViewMode('split')}
-              className={`px-6 py-2 rounded-lg transition-all ${
-                viewMode === 'split'
-                  ? 'bg-primary-500 text-white'
-                  : 'text-gray-400 hover:text-white'
-              }`}
-            >
-              Split View
-            </button>
-            <button
-              onClick={() => setViewMode('diff')}
-              className={`px-6 py-2 rounded-lg transition-all ${
-                viewMode === 'diff'
-                  ? 'bg-primary-500 text-white'
-                  : 'text-gray-400 hover:text-white'
-              }`}
-            >
-              Diff View
-            </button>
+        {/* View Mode Toggle - Only show if article is processed */}
+        {article.processed && article.debiased_content && (
+          <div className="flex justify-center mb-6">
+            <div className="inline-flex rounded-lg border border-gray-800 bg-gray-900/50 p-1">
+              <button
+                onClick={() => setViewMode('split')}
+                className={`px-6 py-2 rounded-lg transition-all ${
+                  viewMode === 'split'
+                    ? 'bg-primary-500 text-white'
+                    : 'text-gray-400 hover:text-white'
+                }`}
+              >
+                Split View
+              </button>
+              <button
+                onClick={() => setViewMode('diff')}
+                className={`px-6 py-2 rounded-lg transition-all ${
+                  viewMode === 'diff'
+                    ? 'bg-primary-500 text-white'
+                    : 'text-gray-400 hover:text-white'
+                }`}
+              >
+                Diff View
+              </button>
+            </div>
           </div>
-        </div>
+        )}
 
-        {/* Split View */}
-        {viewMode === 'split' && (
+        {/* Unprocessed Article Notice */}
+        {!article.processed && (
+          <div className="bg-blue-500/10 border border-blue-500/30 rounded-xl p-6 mb-6 text-center">
+            <div className="text-4xl mb-3">🔍</div>
+            <h3 className="text-xl font-bold text-blue-400 mb-2">Article Not Yet Analyzed</h3>
+            <p className="text-gray-400 mb-4">
+              Click the "Analyze for Bias" button above to check this article for biased content using AI.
+            </p>
+          </div>
+        )}
+
+        {/* Original Content Only (for unprocessed articles) */}
+        {!article.processed && (
+          <div className="bg-gray-900/50 backdrop-blur-sm rounded-xl border border-gray-800 p-6">
+            <h2 className="text-xl font-bold text-white flex items-center space-x-2 mb-4">
+              <span>📄</span>
+              <span>Article Content</span>
+            </h2>
+            <div className="prose prose-invert max-w-none">
+              <p className="text-gray-300 leading-relaxed whitespace-pre-wrap">
+                {article.original_content || article.content || 'No content available'}
+              </p>
+            </div>
+          </div>
+        )}
+
+        {/* Split View (for processed articles) */}
+        {article.processed && viewMode === 'split' && (
           <div className="grid lg:grid-cols-2 gap-6">
             {/* Original Content */}
             <div className="bg-gray-900/50 backdrop-blur-sm rounded-xl border border-gray-800 p-6">
@@ -248,7 +342,7 @@ const ArticleDetailPage = () => {
               </div>
               <div className="prose prose-invert max-w-none">
                 <p className="text-gray-300 leading-relaxed whitespace-pre-wrap">
-                  {highlightText(article.original_content, article.biased_terms, 'biased')}
+                  {highlightText(article.original_content || article.content || '', article.biased_terms, 'biased')}
                 </p>
               </div>
             </div>
@@ -277,8 +371,8 @@ const ArticleDetailPage = () => {
           </div>
         )}
 
-        {/* Diff View */}
-        {viewMode === 'diff' && article.changes_made && article.changes_made.length > 0 && (
+        {/* Diff View (for processed articles) */}
+        {article.processed && viewMode === 'diff' && article.changes_made && article.changes_made.length > 0 && (
           <div className="bg-gray-900/50 backdrop-blur-sm rounded-xl border border-gray-800 p-6">
             <h2 className="text-xl font-bold text-white mb-6 flex items-center space-x-2">
               <span>🔄</span>
@@ -309,8 +403,8 @@ const ArticleDetailPage = () => {
           </div>
         )}
 
-        {/* Recommended Headline */}
-        {article.recommended_headline && (
+        {/* Recommended Headline (for processed articles) */}
+        {article.processed && article.recommended_headline && (
           <div className="mt-6 bg-gradient-to-r from-primary-500/10 to-emerald-500/10 border border-primary-500/30 rounded-xl p-6">
             <h3 className="text-lg font-bold text-primary-400 mb-3 flex items-center space-x-2">
               <span>📰</span>
@@ -320,27 +414,29 @@ const ArticleDetailPage = () => {
           </div>
         )}
 
-        {/* Legend */}
-        <div className="mt-6 bg-gray-900/50 backdrop-blur-sm rounded-xl border border-gray-800 p-6">
-          <h3 className="text-lg font-bold text-white mb-4">🎨 Color Legend</h3>
-          <div className="grid md:grid-cols-2 gap-4">
-            <div className="flex items-center space-x-3">
-              <span className="bg-red-500/20 text-red-300 border-b-2 border-red-500 px-3 py-1 rounded">
-                Biased Word
-              </span>
-              <span className="text-gray-400">= Original biased terms</span>
+        {/* Legend (only show for processed articles) */}
+        {article.processed && article.is_biased && (
+          <div className="mt-6 bg-gray-900/50 backdrop-blur-sm rounded-xl border border-gray-800 p-6">
+            <h3 className="text-lg font-bold text-white mb-4">🎨 Color Legend</h3>
+            <div className="grid md:grid-cols-2 gap-4">
+              <div className="flex items-center space-x-3">
+                <span className="bg-red-500/20 text-red-300 border-b-2 border-red-500 px-3 py-1 rounded">
+                  Biased Word
+                </span>
+                <span className="text-gray-400">= Original biased terms</span>
+              </div>
+              <div className="flex items-center space-x-3">
+                <span className="bg-yellow-500/20 text-yellow-300 border-b-2 border-yellow-500 px-3 py-1 rounded">
+                  Changed Word
+                </span>
+                <span className="text-gray-400">= Debiased replacements</span>
+              </div>
             </div>
-            <div className="flex items-center space-x-3">
-              <span className="bg-yellow-500/20 text-yellow-300 border-b-2 border-yellow-500 px-3 py-1 rounded">
-                Changed Word
-              </span>
-              <span className="text-gray-400">= Debiased replacements</span>
-            </div>
+            <p className="text-sm text-gray-500 mt-4">
+              💡 Hover over highlighted text to see detailed explanations
+            </p>
           </div>
-          <p className="text-sm text-gray-500 mt-4">
-            💡 Hover over highlighted text to see detailed explanations
-          </p>
-        </div>
+        )}
       </div>
     </div>
   );

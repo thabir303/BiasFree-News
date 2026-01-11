@@ -3,6 +3,8 @@ Optimized web scraping module for Bangladeshi newspapers.
 Implements performance improvements for faster scraping.
 """
 import requests
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 import re
 import time
 import threading
@@ -40,8 +42,21 @@ class OptimizedNewspaperScraper:
             'Cache-Control': 'max-age=0'
         }
         
-        # Use session for connection pooling
+        # Configure session with increased connection pool
         self.session = requests.Session()
+        
+        # Increase connection pool size to handle concurrent requests
+        adapter = HTTPAdapter(
+            pool_connections=20,  # Increased from default 10
+            pool_maxsize=20,      # Increased from default 10
+            max_retries=Retry(
+                total=3,
+                backoff_factor=0.3,
+                status_forcelist=[500, 502, 503, 504]
+            )
+        )
+        self.session.mount('http://', adapter)
+        self.session.mount('https://', adapter)
         self.session.headers.update(self.headers)
         
         # URL cache to avoid duplicates
@@ -259,12 +274,19 @@ class OptimizedProthomAloScraper(OptimizedNewspaperScraper):
             return None
     
     def _fetch_and_create_article(self, metadata: Dict) -> Optional[ScrapedArticle]:
-        """Optimized article content fetching."""
+        """Optimized article content fetching with fallback to summary."""
         try:
+            # Try to get full content first
             full_content = self.fetch_article_content(metadata['url'])
-            content = full_content if full_content and len(full_content) > 100 else metadata['summary']
             
-            if not content or len(content) < 50:
+            # Use full content if good, otherwise use summary
+            if full_content and len(full_content) > 100:
+                content = full_content
+            elif metadata.get('summary') and len(metadata['summary']) > 50:
+                content = metadata['summary']
+                logger.debug(f"Using summary for {metadata['url']} (full content failed)")
+            else:
+                logger.debug(f"Skipping {metadata['url']} - insufficient content")
                 return None
             
             # Truncate content to 2000 characters for LLM processing efficiency
@@ -280,46 +302,75 @@ class OptimizedProthomAloScraper(OptimizedNewspaperScraper):
             )
             
         except Exception as e:
-            logger.debug(f"Failed to create article: {str(e)}")
+            logger.warning(f"Failed to create article from {metadata.get('url', 'unknown')}: {str(e)}")
             return None
     
     def fetch_article_content(self, url: str) -> str:
-        """Optimized content fetching with better error handling."""
+        """Optimized content fetching with comprehensive selector fallbacks."""
         try:
             response = self.make_request(url)
             if not response:
                 return ""
             
             soup = BeautifulSoup(response.text, 'html.parser')
-            
-            # More efficient content extraction
             content_parts = []
             
-            # Try main content selectors first
+            # Comprehensive list of content selectors (most specific to most general)
             content_selectors = [
                 'div.story-content',
                 'div.story-details',
+                'div.story_content',
                 'article .content',
-                '.article-content'
+                'div.article-content',
+                'div.content-detail',
+                'div[itemprop="articleBody"]',
+                'div.article_content',
+                'div.news-content',
+                'div.main-content',
+                'article',
+                '.content'
             ]
             
             for selector in content_selectors:
-                content_divs = soup.select(selector)
-                if content_divs:
-                    for div in content_divs:
-                        paragraphs = div.find_all('p')
-                        for p in paragraphs:
-                            text = p.get_text(strip=True)
-                            if text and len(text) > 20:
-                                content_parts.append(text)
-                    
-                    if content_parts:
-                        break
+                try:
+                    content_divs = soup.select(selector)
+                    if content_divs:
+                        for div in content_divs:
+                            # Get all text content, not just <p> tags
+                            paragraphs = div.find_all(['p', 'div'], recursive=True)
+                            if not paragraphs:
+                                # Fallback: get direct text
+                                text = div.get_text(strip=True)
+                                if text and len(text) > 50:
+                                    content_parts.append(text)
+                            else:
+                                for p in paragraphs:
+                                    text = p.get_text(strip=True)
+                                    if text and len(text) > 20 and not text.startswith(('আরও পড়ুন', 'সম্পর্কিত', 'ছবি:', 'ভিডিও:')):
+                                        content_parts.append(text)
+                        
+                        if content_parts and len(' '.join(content_parts)) > 100:
+                            break
+                except Exception:
+                    continue
             
-            return ' '.join(content_parts)
+            # If still no content, try getting all paragraphs from body
+            if not content_parts:
+                body = soup.find('body')
+                if body:
+                    paragraphs = body.find_all('p', limit=50)
+                    for p in paragraphs:
+                        text = p.get_text(strip=True)
+                        if text and len(text) > 30:
+                            content_parts.append(text)
+            
+            result = ' '.join(content_parts)
+            # Clean up excessive whitespace
+            result = re.sub(r'\s+', ' ', result).strip()
+            return result
             
         except Exception as e:
-            logger.debug(f"Failed to fetch article content from {url}: {str(e)}")
+            logger.warning(f"Failed to fetch article content from {url}: {str(e)}")
             return ""
 
 
@@ -500,33 +551,57 @@ class OptimizedJugantorScraper(OptimizedNewspaperScraper):
             if not title:
                 return None
             
-            # More efficient content extraction
+            # Comprehensive content extraction with multiple strategies
             content_parts = []
             content_selectors = [
                 'div.news-element-text',
+                'div.news-element',
                 'div.content',
                 'div.details',
                 'div.article-content',
                 'div.news-content',
-                'article .content'
+                'div.story-content',
+                'div[itemprop="articleBody"]',
+                'article .content',
+                'article',
+                '.main-content'
             ]
             
             for selector in content_selectors:
-                content_div = soup.select_one(selector)
-                if content_div:
-                    paragraphs = content_div.find_all('p')
-                    for p in paragraphs:
-                        text = p.get_text(strip=True)
-                        if text and len(text) > 20:
-                            content_parts.append(text)
-                    
-                    if content_parts:
-                        break
+                try:
+                    content_div = soup.select_one(selector)
+                    if content_div:
+                        # Try to get paragraphs first
+                        paragraphs = content_div.find_all(['p', 'div'], recursive=True, limit=100)
+                        if paragraphs:
+                            for p in paragraphs:
+                                text = p.get_text(strip=True)
+                                if text and len(text) > 20 and not text.startswith(('আরও পড়ুন', 'সম্পর্কিত', 'ছবি')):
+                                    content_parts.append(text)
+                        else:
+                            # Fallback: get all text
+                            text = content_div.get_text(strip=True)
+                            if text and len(text) > 50:
+                                content_parts.append(text)
+                        
+                        if content_parts and len(' '.join(content_parts)) > 100:
+                            break
+                except Exception:
+                    continue
+            
+            # If still no content, try all paragraphs from body
+            if not content_parts:
+                body_paragraphs = soup.find_all('p', limit=50)
+                for p in body_paragraphs:
+                    text = p.get_text(strip=True)
+                    if text and len(text) > 30:
+                        content_parts.append(text)
             
             content = ' '.join(content_parts)
             content = self.clean_content(content)
             
             if not content or len(content) < 50:
+                logger.debug(f"Insufficient content for {url}: {len(content)} chars")
                 return None
             
             return ScrapedArticle(

@@ -5,6 +5,7 @@ import { api, type Article } from '../services/api';
 const ArticlesPage = () => {
   const [articles, setArticles] = useState<Article[]>([]);
   const [loading, setLoading] = useState(true);
+  const [processingIds, setProcessingIds] = useState<Set<number>>(new Set());
   const [filters, setFilters] = useState({
     source: '',
     is_biased: '',
@@ -51,11 +52,46 @@ const ArticlesPage = () => {
 
   const formatDate = (dateStr: string | null) => {
     if (!dateStr) return 'N/A';
-    return new Date(dateStr).toLocaleDateString('en-US', {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
-    });
+    try {
+      const date = new Date(dateStr);
+      if (isNaN(date.getTime())) return 'N/A';
+      return date.toLocaleDateString('en-US', {
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric',
+      });
+    } catch {
+      return 'N/A';
+    }
+  };
+
+  const handleBiasCheck = async (articleId: number, e: React.MouseEvent) => {
+    e.preventDefault(); // Prevent navigation
+    e.stopPropagation();
+    
+    if (processingIds.has(articleId)) return;
+
+    setProcessingIds(prev => new Set(prev).add(articleId));
+    
+    try {
+      const updatedArticle = await api.processArticle(articleId);
+      
+      // Update the article in the list
+      setArticles(prevArticles =>
+        prevArticles.map(article =>
+          article.id === articleId ? updatedArticle : article
+        )
+      );
+    } catch (error) {
+      console.error('Failed to process article:', error);
+      alert('Failed to analyze article. Please try again.');
+    } finally {
+      setProcessingIds(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(articleId);
+        return newSet;
+      });
+    }
   };
 
   const getBiasColor = (score: number) => {
@@ -69,9 +105,12 @@ const ArticlesPage = () => {
       <div className="max-w-7xl mx-auto">
         {/* Header */}
         <div className="mb-8">
-          <h1 className="text-4xl font-bold mb-2 bg-gradient-to-r from-primary-400 to-emerald-400 bg-clip-text text-transparent">
-            📰 Articles Database
-          </h1>
+            <h1 className="text-4xl font-bold mb-2">
+            <span className="text-white">📰 </span>
+            <span className="bg-gradient-to-r from-primary-400 to-emerald-400 bg-clip-text text-transparent">
+              Articles Database
+            </span>
+            </h1>
           <p className="text-gray-400">Browse and analyze scraped articles</p>
         </div>
 
@@ -182,10 +221,32 @@ const ArticlesPage = () => {
                   )}
                 </div>
 
-                {/* Status Badge */}
-                {!article.processed && (
-                  <div className="mt-3 px-3 py-1 bg-blue-500/10 border border-blue-500/30 rounded-lg text-xs text-blue-400">
-                    ⏳ Processing...
+                {/* Status Badge or Action Button */}
+                {!article.processed ? (
+                  <button
+                    onClick={(e) => handleBiasCheck(article.id, e)}
+                    disabled={processingIds.has(article.id)}
+                    className="mt-3 w-full px-4 py-2 bg-primary-500 hover:bg-primary-600 disabled:bg-gray-600 disabled:cursor-not-allowed text-white rounded-lg text-sm font-medium transition-colors flex items-center justify-center space-x-2"
+                  >
+                    {processingIds.has(article.id) ? (
+                      <>
+                        <div className="animate-spin rounded-full h-4 w-4 border-t-2 border-b-2 border-white"></div>
+                        <span>Analyzing...</span>
+                      </>
+                    ) : (
+                      <>
+                        <span>🔍</span>
+                        <span>Check for Bias</span>
+                      </>
+                    )}
+                  </button>
+                ) : article.is_biased ? (
+                  <div className="mt-3 px-3 py-1 bg-red-500/10 border border-red-500/30 rounded-lg text-xs text-red-400 text-center">
+                    ⚠️ Bias Detected ({article.bias_score.toFixed(0)}%)
+                  </div>
+                ) : (
+                  <div className="mt-3 px-3 py-1 bg-green-500/10 border border-green-500/30 rounded-lg text-xs text-green-400 text-center">
+                    ✅ No Bias Detected
                   </div>
                 )}
               </Link>
