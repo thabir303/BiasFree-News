@@ -22,7 +22,7 @@ function App() {
         {/* Footer */}
         <footer className="border-t border-gray-800 mt-12 py-8">
           <div className="max-w-7xl mx-auto px-4 text-center text-gray-400 text-sm">
-            <p>© 2024 BiasFree News. Powered by AI to ensure unbiased journalism.</p>
+            <p>© 2026 BiasFree News. Powered by AI to ensure unbiased journalism.</p>
           </div>
         </footer>
       </div>
