@@ -40,12 +40,12 @@ const HomePage = () => {
             </span>{' '}
             News Analyzer
           </h1>
-          <p className="text-xl text-gray-400 mb-2">
+          {/* <p className="text-xl text-gray-400 mb-2">
             বাংলা সংবাদ নিরপেক্ষ ও বিশ্বাসযোগ্য করুন
-          </p>
-          <p className="text-gray-500">
+          </p> */}
+          {/* <p className="text-gray-500">
             Detect and remove bias from Bengali news articles powered by AI
-          </p>
+          </p> */}
         </div>
 
         {/* Features */}
