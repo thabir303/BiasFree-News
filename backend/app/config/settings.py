@@ -39,6 +39,33 @@ class Settings(BaseSettings):
     host: str = Field(default="0.0.0.0", env="HOST")
     port: int = Field(default=8000, env="PORT")
     
+    # JWT Configuration
+    jwt_secret_key: str = Field(
+        default="your-secret-key-change-in-production-minimum-32-characters-long",
+        env="JWT_SECRET_KEY"
+    )
+    jwt_algorithm: str = Field(default="HS256", env="JWT_ALGORITHM")
+    jwt_expiration_days: int = Field(default=7, env="JWT_EXPIRATION_DAYS")
+    
+    # Admin User Configuration
+    admin_username: str = Field(default="admin", env="ADMIN_USERNAME")
+    admin_email: str = Field(default="adminuser@admin.com", env="ADMIN_EMAIL")
+    admin_password: str = Field(default="platformadmin@123", env="ADMIN_PASSWORD")
+    
+    # SMTP Email Configuration
+    mail_username: str = Field(..., env="MAIL_USERNAME")
+    mail_password: str = Field(..., env="MAIL_PASSWORD")
+    mail_from: str = Field(..., env="MAIL_FROM")
+    mail_server: str = Field(default="smtp.gmail.com", env="MAIL_SERVER")
+    mail_from_name: str = Field(default="BiasFree News", env="MAIL_FROM_NAME")
+    mail_port: int = Field(default=587, env="MAIL_PORT")
+    
+    # Frontend URL Configuration
+    frontend_url: str = Field(default="http://localhost:5174", env="FRONTEND_URL")
+    
+    # Token Expiration Configuration
+    verification_token_expiration_minutes: int = Field(default=1, env="VERIFICATION_TOKEN_EXPIRATION_MINUTES")
+    
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",

@@ -2,10 +2,39 @@
 SQLAlchemy database models for storing articles and analysis results.
 """
 from datetime import datetime
-from sqlalchemy import Column, Integer, String, Text, DateTime, Boolean, Float, JSON
+from sqlalchemy import Column, Integer, String, Text, DateTime, Boolean, Float, JSON, Enum
 from sqlalchemy.ext.declarative import declarative_base
+import enum
 
 Base = declarative_base()
+
+
+class UserRole(str, enum.Enum):
+    """User roles enum."""
+    ADMIN = "admin"
+    USER = "user"
+
+
+class User(Base):
+    """Model for storing user accounts."""
+    
+    __tablename__ = "users"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    username = Column(String(50), nullable=False, index=True)  # Username is NOT unique
+    email = Column(String(100), unique=True, nullable=False, index=True)  # Only email is unique
+    hashed_password = Column(String(255), nullable=False)
+    role = Column(Enum(UserRole), default=UserRole.USER, nullable=False, index=True)
+    is_active = Column(Boolean, default=True, nullable=False)
+    is_verified = Column(Boolean, default=False, nullable=False)
+    verification_token = Column(String(255), nullable=True)
+    token_expires_at = Column(DateTime, nullable=True)
+    
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    
+    def __repr__(self):
+        return f"<User(id={self.id}, username={self.username}, email={self.email}, role={self.role}, verified={self.is_verified})>"
 
 
 class Article(Base):

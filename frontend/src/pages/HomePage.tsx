@@ -1,6 +1,8 @@
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import type { FullProcessResponse } from '../types/index';
 import { api } from '../services/api';
+import { useAuth } from '../contexts/AuthContext';
 import ArticleInput from '../components/ArticleInput';
 import ResultsDisplay from '../components/ResultsDisplay';
 
@@ -8,8 +10,19 @@ const HomePage = () => {
   const [results, setResults] = useState<FullProcessResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const { isAuthenticated } = useAuth();
+  const navigate = useNavigate();
 
   const handleAnalyze = async (content: string, title: string) => {
+    // Check authentication before analyzing
+    if (!isAuthenticated) {
+      setError('Please login to analyze articles');
+      setTimeout(() => {
+        navigate('/login', { state: { from: { pathname: '/' } } });
+      }, 2000);
+      return;
+    }
+
     setLoading(true);
     setError(null);
     setResults(null);
@@ -19,11 +32,20 @@ const HomePage = () => {
       setResults(data);
     } catch (err: any) {
       console.error('Analysis error:', err);
-      setError(
-        err.response?.data?.detail ||
-        err.message ||
-        'Failed to analyze article. Please check backend connection.'
-      );
+      
+      // Check if it's an authentication error
+      if (err.response?.status === 401) {
+        setError('Your session has expired. Please login again.');
+        setTimeout(() => {
+          navigate('/login', { state: { from: { pathname: '/' } } });
+        }, 2000);
+      } else {
+        setError(
+          err.response?.data?.detail ||
+          err.message ||
+          'Failed to analyze article. Please check backend connection.'
+        );
+      }
     } finally {
       setLoading(false);
     }
@@ -40,6 +62,11 @@ const HomePage = () => {
             </span>{' '}
             News Analyzer
           </h1>
+          {!isAuthenticated && (
+            <div className="mt-4 bg-yellow-500/10 border border-yellow-500/30 text-yellow-400 px-4 py-3 rounded-lg inline-block">
+              ℹ️ Please <button onClick={() => navigate('/login')} className="underline font-semibold">login</button> to analyze articles
+            </div>
+          )}
           {/* <p className="text-xl text-gray-400 mb-2">
             বাংলা সংবাদ নিরপেক্ষ ও বিশ্বাসযোগ্য করুন
           </p> */}

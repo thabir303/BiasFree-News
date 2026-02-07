@@ -1,3 +1,48 @@
+// ============================================
+// Authentication Types
+// ============================================
+
+export interface User {
+    id: number;
+    username: string;
+    email: string;
+    role: 'admin' | 'user';
+    is_active: boolean;
+}
+
+export interface SignupRequest {
+    username: string;
+    email: string;
+    password: string;
+}
+
+export interface SigninRequest {
+    email: string;
+    password: string;
+}
+
+export interface AuthResponse {
+    access_token: string;
+    token_type: string;
+    user: User;
+    message?: string;
+}
+
+export interface AuthContextType {
+    user: User | null;
+    token: string | null;
+    signin: (email: string, password: string) => Promise<void>;
+    signup: (username: string, email: string, password: string) => Promise<string>;
+    logout: () => void;
+    isAuthenticated: boolean;
+    isAdmin: boolean;
+    loading: boolean;
+}
+
+// ============================================
+// Article Processing Types
+// ============================================
+
 export interface BiasedTerm {
     term: string;
     reason: string;

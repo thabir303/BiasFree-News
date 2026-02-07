@@ -17,10 +17,11 @@ from app.models.schemas import (
     FullProcessResponse
 )
 from app.database.database import get_db
-from app.database.models import Article, SchedulerLog
+from app.database.models import Article, SchedulerLog, User
 from app.services.bias_detector import BiasDetectorService
 from app.services.scheduler import get_scheduler
 from app.services.article_processor import ArticleProcessor
+from app.services.auth_service import require_admin, require_authenticated, get_current_user
 from app.config import settings
 from app.config.newspapers import get_all_newspaper_keys
 
@@ -38,7 +39,11 @@ bias_detector = BiasDetectorService()
 
 @router.post("/analyze", response_model=BiasAnalysisResponse)
 @limiter.limit(f"{settings.rate_limit_per_minute}/minute")
-async def analyze_article(request: Request, article: ArticleInput) -> BiasAnalysisResponse:
+async def analyze_article(
+    request: Request,
+    article: ArticleInput,
+    current_user: User = Depends(require_authenticated)
+) -> BiasAnalysisResponse:
     """
     Analyze article for bias detection.
     
@@ -58,7 +63,11 @@ async def analyze_article(request: Request, article: ArticleInput) -> BiasAnalys
 
 @router.post("/debias", response_model=DebiasResponse)
 @limiter.limit(f"{settings.rate_limit_per_minute}/minute")
-async def debias_article(request: Request, article: ArticleInput) -> DebiasResponse:
+async def debias_article(
+    request: Request,
+    article: ArticleInput,
+    current_user: User = Depends(require_authenticated)
+) -> DebiasResponse:
     """
     Remove bias from article content and generate neutral version.
     
@@ -96,7 +105,11 @@ async def debias_article(request: Request, article: ArticleInput) -> DebiasRespo
 
 @router.post("/full-process", response_model=FullProcessResponse)
 @limiter.limit(f"{settings.rate_limit_per_minute}/minute")
-async def full_process(request: Request, article: ArticleInput) -> FullProcessResponse:
+async def full_process(
+    request: Request,
+    article: ArticleInput,
+    current_user: User = Depends(require_authenticated)
+) -> FullProcessResponse:
     """
     Complete bias-free processing: analyze, debias, and generate headline.
     
@@ -133,7 +146,8 @@ async def scrape_articles(
     end_date: Optional[date] = Query(None, description="End date (YYYY-MM-DD)"),
     max_articles: int = Query(50, ge=1, le=500, description="Maximum articles per newspaper"),
     process_immediately: bool = Query(False, description="Process articles immediately after scraping"),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin)
 ):
     """
     Scrape articles from newspapers and optionally process them.
@@ -201,7 +215,8 @@ async def manual_scrape(
     sources: Optional[List[str]] = Query(None, alias="sources[]"),
     start_date: Optional[str] = Query(None),
     end_date: Optional[str] = Query(None),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin)
 ):
     """
     Manual scraping endpoint for on-demand article collection.
@@ -352,7 +367,11 @@ async def get_article(article_id: int, db: Session = Depends(get_db)):
 
 
 @router.post("/articles/{article_id}/process")
-async def process_article_endpoint(article_id: int, db: Session = Depends(get_db)):
+async def process_article_endpoint(
+    article_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_authenticated)
+):
     """
     Process a single unprocessed article for bias detection and debiasing.
     
@@ -436,7 +455,11 @@ async def process_article_endpoint(article_id: int, db: Session = Depends(get_db
 
 
 @router.post("/articles/{article_id}/reprocess")
-async def reprocess_article(article_id: int, db: Session = Depends(get_db)):
+async def reprocess_article(
+    article_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin)
+):
     """
     Reprocess a specific article (useful after fixing bugs).
     
@@ -477,7 +500,8 @@ async def reprocess_article(article_id: int, db: Session = Depends(get_db)):
 @router.post("/articles/reprocess-all-biased")
 async def reprocess_all_biased_articles(
     db: Session = Depends(get_db),
-    limit: int = Query(50, ge=1, le=200, description="Max articles to reprocess")
+    limit: int = Query(50, ge=1, le=200, description="Max articles to reprocess"),
+    current_user: User = Depends(require_admin)
 ):
     """
     Re-process all biased articles that have 0 changes.
@@ -522,7 +546,10 @@ async def reprocess_all_biased_articles(
 
 
 @router.get("/scheduler/status")
-async def get_scheduler_status(db: Session = Depends(get_db)):
+async def get_scheduler_status(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_authenticated)
+):
     """Get scheduler status, recent job history, and last run details."""
     try:
         scheduler = get_scheduler()
@@ -560,7 +587,8 @@ async def get_scheduler_status(db: Session = Depends(get_db)):
 @router.post("/scheduler/test-run")
 async def schedule_test_run(
     minutes: int = Query(1, ge=1, le=60, description="Minutes from now (1-60)"),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin)
 ):
     """Schedule a one-time test scraping run after specified minutes."""
     try:
@@ -588,7 +616,8 @@ async def schedule_test_run(
 @router.get("/scheduler/logs")
 async def get_scheduler_logs(
     db: Session = Depends(get_db),
-    limit: int = Query(10, ge=1, le=50)
+    limit: int = Query(10, ge=1, le=50),
+    current_user: User = Depends(require_authenticated)
 ):
     """Get recent scheduler job logs."""
     try:
@@ -641,7 +670,10 @@ async def get_newspapers():
 
 
 @router.get("/statistics")
-async def get_statistics(db: Session = Depends(get_db)):
+async def get_statistics(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_authenticated)
+):
     """Get overall statistics about scraped and processed articles."""
     try:
         total_articles = db.query(Article).count()

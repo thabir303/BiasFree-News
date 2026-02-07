@@ -1,18 +1,34 @@
 import { Link, useLocation } from 'react-router-dom';
 import { useState } from 'react';
+import { useAuth } from '../contexts/AuthContext';
 
 const Navbar = () => {
   const location = useLocation();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [showUserMenu, setShowUserMenu] = useState(false);
+  const { user, isAuthenticated, isAdmin, logout } = useAuth();
 
   const navItems = [
-    { path: '/', label: 'Analyze', icon: '🔍' },
-    { path: '/articles', label: 'Articles', icon: '📰' },
-    { path: '/dashboard', label: 'Dashboard', icon: '📊' },
-    { path: '/scrape', label: 'Scrape', icon: '🌐' },
+    { path: '/', label: 'Analyze', icon: '🔍', protected: false },
+    { path: '/articles', label: 'Articles', icon: '📰', protected: false },
+    { path: '/dashboard', label: 'Dashboard', icon: '📊', protected: true, adminOnly: false },
+    { path: '/scrape', label: 'Scrape', icon: '🌐', protected: true, adminOnly: true },
   ];
 
+  // Filter nav items based on authentication
+  const visibleNavItems = navItems.filter(item => {
+    if (!item.protected) return true;
+    if (!isAuthenticated) return false;
+    if (item.adminOnly && !isAdmin) return false;
+    return true;
+  });
+
   const isActive = (path: string) => location.pathname === path;
+
+  const handleLogout = () => {
+    logout();
+    setShowUserMenu(false);
+  };
 
   return (
     <nav className="bg-gray-900/95 backdrop-blur-sm border-b border-gray-800 sticky top-0 z-50">
@@ -33,7 +49,7 @@ const Navbar = () => {
 
           {/* Desktop Navigation */}
           <div className="hidden md:flex items-center space-x-1">
-            {navItems.map((item) => (
+            {visibleNavItems.map((item) => (
               <Link
                 key={item.path}
                 to={item.path}
@@ -51,6 +67,47 @@ const Navbar = () => {
                 <span>{item.label}</span>
               </Link>
             ))}
+
+            {/* Auth Section */}
+            {isAuthenticated ? (
+              <div className="relative ml-3">
+                <button
+                  onClick={() => setShowUserMenu(!showUserMenu)}
+                  className="flex items-center space-x-2 px-4 py-2 rounded-lg text-gray-300 hover:bg-gray-800 hover:text-white transition-colors"
+                >
+                  <span className="text-lg">👤</span>
+                  <span className="font-medium">{user?.username}</span>
+                  {isAdmin && (
+                    <span className="px-2 py-0.5 text-xs bg-yellow-500/20 text-yellow-400 rounded">
+                      Admin
+                    </span>
+                  )}
+                </button>
+
+                {/* User Dropdown */}
+                {showUserMenu && (
+                  <div className="absolute right-0 mt-2 w-48 bg-gray-800 rounded-lg shadow-lg border border-gray-700 py-1">
+                    <div className="px-4 py-2 border-b border-gray-700">
+                      <p className="text-sm text-gray-400">Signed in as</p>
+                      <p className="text-sm font-medium text-white truncate">{user?.email}</p>
+                    </div>
+                    <button
+                      onClick={handleLogout}
+                      className="w-full text-left px-4 py-2 text-sm text-red-400 hover:bg-gray-700 transition-colors"
+                    >
+                      🚪 Logout
+                    </button>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <Link
+                to="/login"
+                className="ml-3 px-4 py-2 rounded-lg font-medium bg-primary-500 text-white hover:bg-primary-600 transition-colors"
+              >
+                Login
+              </Link>
+            )}
           </div>
 
           {/* Mobile menu button */}
@@ -81,7 +138,7 @@ const Navbar = () => {
       {isMobileMenuOpen && (
         <div className="md:hidden border-t border-gray-800 bg-gray-900">
           <div className="px-2 pt-2 pb-3 space-y-1">
-            {navItems.map((item) => (
+            {visibleNavItems.map((item) => (
               <Link
                 key={item.path}
                 to={item.path}
@@ -100,6 +157,39 @@ const Navbar = () => {
                 <span>{item.label}</span>
               </Link>
             ))}
+
+            {/* Mobile Auth Section */}
+            {isAuthenticated ? (
+              <div className="border-t border-gray-800 pt-2 mt-2">
+                <div className="px-3 py-2">
+                  <p className="text-xs text-gray-400">Signed in as</p>
+                  <p className="text-sm font-medium text-white">{user?.username}</p>
+                  <p className="text-xs text-gray-400">{user?.email}</p>
+                  {isAdmin && (
+                    <span className="inline-block mt-1 px-2 py-0.5 text-xs bg-yellow-500/20 text-yellow-400 rounded">
+                      Admin
+                    </span>
+                  )}
+                </div>
+                <button
+                  onClick={() => {
+                    handleLogout();
+                    setIsMobileMenuOpen(false);
+                  }}
+                  className="w-full text-left px-3 py-2 text-red-400 hover:bg-gray-800 rounded-lg transition-colors"
+                >
+                  🚪 Logout
+                </button>
+              </div>
+            ) : (
+              <Link
+                to="/login"
+                onClick={() => setIsMobileMenuOpen(false)}
+                className="block px-3 py-2 rounded-lg font-medium bg-primary-500 text-white hover:bg-primary-600 transition-colors text-center"
+              >
+                Login
+              </Link>
+            )}
           </div>
         </div>
       )}

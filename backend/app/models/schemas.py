@@ -3,9 +3,50 @@ Pydantic models for request/response validation.
 Ensures type safety and automatic API documentation.
 """
 from typing import List, Optional
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, EmailStr
 from datetime import date
 
+
+# ============================================
+# Authentication Schemas
+# ============================================
+
+class UserSignup(BaseModel):
+    """User registration request."""
+    username: str = Field(..., min_length=3, max_length=50, description="Unique username")
+    email: EmailStr = Field(..., description="User email address")
+    password: str = Field(..., min_length=6, description="User password (min 6 characters)")
+
+
+class UserSignin(BaseModel):
+    """User login request."""
+    email: EmailStr = Field(..., description="User email address")
+    password: str = Field(..., description="User password")
+
+
+class TokenResponse(BaseModel):
+    """JWT token response."""
+    access_token: str = Field(..., description="JWT access token")
+    token_type: str = Field(default="bearer", description="Token type")
+    user: "UserResponse"
+    message: Optional[str] = Field(None, description="Additional message (e.g., verification info)")
+
+
+class UserResponse(BaseModel):
+    """User information response."""
+    id: int
+    username: str
+    email: str
+    role: str
+    is_active: bool
+    
+    class Config:
+        from_attributes = True
+
+
+# ============================================
+# Article Processing Schemas
+# ============================================
 
 class ArticleInput(BaseModel):
     """Input model for article analysis."""

@@ -2,9 +2,27 @@ import axios from 'axios';
 import type {
     ArticleInput,
     FullProcessResponse,
+    SignupRequest,
+    SigninRequest,
+    AuthResponse,
+    User,
 } from '../types/index';
 
 const API_BASE_URL = 'http://localhost:8000/api';
+const AUTH_BASE_URL = 'http://localhost:8000/auth';
+
+// Token management
+export const getToken = (): string | null => {
+    return localStorage.getItem('auth_token');
+};
+
+export const setToken = (token: string): void => {
+    localStorage.setItem('auth_token', token);
+};
+
+export const removeToken = (): void => {
+    localStorage.removeItem('auth_token');
+};
 
 const apiClient = axios.create({
     baseURL: API_BASE_URL,
@@ -13,6 +31,94 @@ const apiClient = axios.create({
     },
     timeout: 300000,  // 5 minutes for scraping operations
 });
+
+// Request interceptor to add auth token
+apiClient.interceptors.request.use(
+    (config) => {
+        const token = getToken();
+        if (token) {
+            config.headers.Authorization = `Bearer ${token}`;
+        }
+        return config;
+    },
+    (error) => {
+        return Promise.reject(error);
+    }
+);
+
+// Response interceptor to handle 401 errors
+apiClient.interceptors.response.use(
+    (response) => response,
+    (error) => {
+        if (error.response?.status === 401) {
+            // Token expired or invalid, remove it
+            removeToken();
+            // Optionally redirect to login
+            window.location.href = '/login';
+        }
+        return Promise.reject(error);
+    }
+);
+
+const authClient = axios.create({
+    baseURL: AUTH_BASE_URL,
+    headers: {
+        'Content-Type': 'application/json',
+    },
+    timeout: 30000,
+});
+
+// ============================================
+// Authentication API
+// ============================================
+
+export const authApi = {
+    signup: async (data: SignupRequest): Promise<AuthResponse> => {
+        const response = await authClient.post<AuthResponse>('/signup', data);
+        return response.data;
+    },
+
+    signin: async (data: SigninRequest): Promise<AuthResponse> => {
+        const response = await authClient.post<AuthResponse>('/signin', data);
+        return response.data;
+    },
+
+    getCurrentUser: async (token: string): Promise<User> => {
+        const response = await authClient.get<User>('/me', {
+            headers: {
+                Authorization: `Bearer ${token}`,
+            },
+        });
+        return response.data;
+    },
+
+    verifyToken: async (token: string): Promise<boolean> => {
+        try {
+            await authClient.get('/verify', {
+                headers: {
+                    Authorization: `Bearer ${token}`,
+                },
+            });
+            return true;
+        } catch {
+            return false;
+        }
+    },
+
+    verifyEmail: async (token: string): Promise<{ message: string }> => {
+        const response = await authClient.post<{ message: string }>(`/verify-email/${token}`);
+        return response.data;
+    },
+
+    resendVerification: async (email: string): Promise<{ message: string; verification_token: string }> => {
+        const response = await authClient.post<{ message: string; verification_token: string }>(`/resend-verification/${email}`);
+        return response.data;
+    },
+};
+
+// ============================================
+// Article Processing API
+// ============================================
 
 export interface Article {
     id: number;

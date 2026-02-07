@@ -1,31 +1,54 @@
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
+import { AuthProvider } from './contexts/AuthContext';
 import Navbar from './components/Navbar';
+import ProtectedRoute from './components/ProtectedRoute';
 import HomePage from './pages/HomePage';
 import ArticlesPage from './pages/ArticlesPage';
 import ArticleDetailPage from './pages/ArticleDetailPage';
 import DashboardPage from './pages/DashboardPage';
 import ManualScrapingPage from './pages/ManualScrapingPage';
+import LoginPage from './pages/LoginPage';
+import SignupPage from './pages/SignupPage';
+import VerifyEmailPage from './pages/VerifyEmailPage';
 
 function App() {
   return (
     <Router>
-      <div className="min-h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900">
-        <Navbar />
-        <Routes>
-          <Route path="/" element={<HomePage />} />
-          <Route path="/articles" element={<ArticlesPage />} />
-          <Route path="/article/:id" element={<ArticleDetailPage />} />
-          <Route path="/dashboard" element={<DashboardPage />} />
-          <Route path="/scrape" element={<ManualScrapingPage />} />
-        </Routes>
+      <AuthProvider>
+        <div className="min-h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900">
+          <Navbar />
+          <Routes>
+            {/* Public Routes */}
+            <Route path="/" element={<HomePage />} />
+            <Route path="/articles" element={<ArticlesPage />} />
+            <Route path="/article/:id" element={<ArticleDetailPage />} />
+            <Route path="/login" element={<LoginPage />} />
+            <Route path="/signup" element={<SignupPage />} />
+            <Route path="/verify-email/:token" element={<VerifyEmailPage />} />
 
-        {/* Footer */}
-        <footer className="border-t border-gray-800 mt-12 py-8">
-          <div className="max-w-7xl mx-auto px-4 text-center text-gray-400 text-sm">
-            <p>© 2026 BiasFree News. </p>
-          </div>
-        </footer>
-      </div>
+            {/* Protected Routes - Authenticated Users */}
+            <Route
+              path="/dashboard"
+              element={
+                <ProtectedRoute>
+                  <DashboardPage />
+                </ProtectedRoute>
+              }
+            />
+
+            {/* Protected Routes - Admin Only */}
+            <Route
+              path="/scrape"
+              element={
+                <ProtectedRoute requireAdmin>
+                  <ManualScrapingPage />
+                </ProtectedRoute>
+              }
+            />
+          </Routes>
+
+        </div>
+      </AuthProvider>
     </Router>
   );
 }

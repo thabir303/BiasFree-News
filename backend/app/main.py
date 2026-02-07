@@ -43,6 +43,22 @@ async def lifespan(app: FastAPI):
     init_db()
     logger.debug("Database initialized successfully")
     
+    # Create admin user if not exists
+    logger.debug("Creating admin user if not exists...")
+    from app.database.database import SessionLocal
+    from app.services.auth_service import AuthService
+    db = SessionLocal()
+    try:
+        admin = AuthService.create_admin_user(db)
+        if admin:
+            logger.info(f"Admin user created: {admin.username} ({admin.email})")
+        else:
+            logger.debug("Admin user already exists")
+    except Exception as e:
+        logger.error(f"Error creating admin user: {e}")
+    finally:
+        db.close()
+    
     # Start scheduler for automated scraping
     logger.debug("Starting automated scraping scheduler...")
     scheduler = get_scheduler()
@@ -89,6 +105,10 @@ app.include_router(router)
 # Include manual processing routes (NEW - for on-demand bias analysis)
 from app.api.manual_processing import router as manual_router
 app.include_router(manual_router)
+
+# Include authentication routes
+from app.api.auth_routes import router as auth_router
+app.include_router(auth_router)
 
 
 @app.exception_handler(Exception)
