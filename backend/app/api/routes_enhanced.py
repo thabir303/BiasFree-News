@@ -261,7 +261,8 @@ async def get_articles(
     limit: int = Query(10, ge=1, le=100),
     processed: Optional[bool] = Query(None, description="Filter by processing status"),
     biased: Optional[bool] = Query(None, description="Filter by bias status"),
-    source: Optional[str] = Query(None, description="Filter by news source")
+    source: Optional[str] = Query(None, description="Filter by news source"),
+    category: Optional[str] = Query(None, description="Filter by category (রাজনীতি, বিশ্ব, মতামত, বাংলাদেশ)")
 ):
     """
     Get articles with filtering and pagination.
@@ -271,6 +272,7 @@ async def get_articles(
     - **processed**: Filter by processing status
     - **biased**: Filter by bias detection result
     - **source**: Filter by news source
+    - **category**: Filter by article category
     """
     try:
         query = db.query(Article)
@@ -282,6 +284,8 @@ async def get_articles(
             query = query.filter(Article.is_biased == biased)
         if source:
             query = query.filter(Article.source == source)
+        if category:
+            query = query.filter(Article.category == category)
         
         # Get total count
         total = query.count()
@@ -298,6 +302,7 @@ async def get_articles(
                 "content": article.original_content[:500] + "..." if len(article.original_content) > 500 else article.original_content,
                 "original_content": article.original_content[:500] + "..." if len(article.original_content) > 500 else article.original_content,
                 "source": article.source,
+                "category": article.category,
                 "url": article.url,
                 "published_date": article.published_date.isoformat() if article.published_date else None,
                 "scraped_at": article.scraped_at.isoformat() if article.scraped_at else article.created_at.isoformat(),
@@ -341,6 +346,7 @@ async def get_article(article_id: int, db: Session = Depends(get_db)):
             "original_content": article.original_content,
             "debiased_content": article.debiased_content,
             "source": article.source,
+            "category": article.category,
             "url": article.url,
             "published_date": article.published_date.isoformat() if article.published_date else None,
             "scraped_at": article.scraped_at.isoformat() if article.scraped_at else article.created_at.isoformat(),
@@ -552,31 +558,16 @@ async def get_scheduler_status(
 ):
     """Get scheduler status, recent job history, and last run details."""
     try:
-        scheduler = get_scheduler()
+        from app.services.redis_scheduler import redis_scheduler_service
         
-        # Get scheduler info
-        jobs = []
-        next_run = None
-        if scheduler._is_running and scheduler.scheduler:
-            for job in scheduler.scheduler.get_jobs():
-                job_next_run = job.next_run_time.isoformat() if job.next_run_time else None
-                jobs.append({
-                    "id": job.id,
-                    "name": job.name,
-                    "next_run": job_next_run
-                })
-                # Set next_run to the earliest scheduled job
-                if job_next_run and (next_run is None or job_next_run < next_run):
-                    next_run = job_next_run
-        
-        # Get last run information from database
-        last_run = scheduler.get_last_run_info(db)
+        # Get Redis-based scheduler status
+        status = redis_scheduler_service.get_status()
         
         return {
-            "running": scheduler._is_running,
-            "next_run": next_run,
-            "jobs": jobs,
-            "last_run": last_run
+            "running": status["running"],
+            "next_run": status["next_run"],
+            "schedule": status["schedule"],
+            "last_run": status["last_run"]
         }
     
     except Exception as e:
@@ -592,12 +583,59 @@ async def schedule_test_run(
 ):
     """Schedule a one-time test scraping run after specified minutes."""
     try:
-        scheduler = get_scheduler()
+        from app.tasks import manual_scraping_task
         
-        if not scheduler._is_running:
-            raise HTTPException(status_code=503, detail="Scheduler is not running")
+        # Trigger manual scraping task immediately
+        task = manual_scraping_task.apply_async()
         
-        run_time = scheduler.schedule_test_run(minutes)
+        return {
+            "message": f"Manual scraping task triggered",
+            "task_id": task.id
+        }
+    
+    except Exception as e:
+        logger.error(f"Test run error: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to schedule test run: {str(e)}")
+
+
+@router.post("/scheduler/update")
+async def update_scheduler(
+    hour: int = Query(..., ge=0, le=23, description="Hour (0-23) in BDT"),
+    minute: int = Query(..., ge=0, le=59, description="Minute (0-59)"),
+    current_user: User = Depends(require_admin)
+):
+    """Update the scheduler configuration (Admin only)."""
+    try:
+        from app.services.redis_scheduler import redis_scheduler_service
+        from datetime import datetime
+        
+        # Validate that the time is in the future
+        now = datetime.now()
+        schedule_time = now.replace(hour=hour, minute=minute, second=0, microsecond=0)
+        
+        # Allow scheduling for today if time hasn't passed, otherwise tomorrow
+        if schedule_time <= now:
+            # Time has passed today, will run tomorrow
+            pass
+        
+        # Update the schedule
+        success = redis_scheduler_service.update_schedule(hour, minute)
+        
+        if not success:
+            raise HTTPException(status_code=400, detail="Failed to update schedule")
+        
+        return {
+            "message": f"Scheduler updated to run daily at {hour:02d}:{minute:02d} BDT",
+            "hour": hour,
+            "minute": minute,
+            "schedule": f"Daily at {hour:02d}:{minute:02d} BDT"
+        }
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Update scheduler error: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to update scheduler: {str(e)}")
         
         return {
             "status": "scheduled",

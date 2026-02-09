@@ -66,6 +66,17 @@ class Settings(BaseSettings):
     # Token Expiration Configuration
     verification_token_expiration_minutes: int = Field(default=1, env="VERIFICATION_TOKEN_EXPIRATION_MINUTES")
     
+    # Redis Configuration for Celery
+    redis_host: str = Field(default="localhost", env="REDIS_HOST")
+    redis_port: int = Field(default=6379, env="REDIS_PORT")
+    redis_db: int = Field(default=0, env="REDIS_DB")
+    redis_username: str = Field(default="default", env="REDIS_USERNAME")
+    redis_password: str = Field(default="", env="REDIS_PASSWORD")
+    
+    # Scheduler Configuration
+    scheduler_hour: int = Field(default=6, env="SCHEDULER_HOUR")
+    scheduler_minute: int = Field(default=0, env="SCHEDULER_MINUTE")
+    
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",

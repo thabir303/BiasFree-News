@@ -1,10 +1,14 @@
 import { useState, useEffect } from 'react';
 import { api, type Statistics, type SchedulerStatus } from '../services/api';
+import { Clock, Edit2 } from 'lucide-react';
 
 const DashboardPage = () => {
   const [statistics, setStatistics] = useState<Statistics | null>(null);
   const [schedulerStatus, setSchedulerStatus] = useState<SchedulerStatus | null>(null);
   const [loading, setLoading] = useState(true);
+  const [editingSchedule, setEditingSchedule] = useState(false);
+  const [newScheduleTime, setNewScheduleTime] = useState('06:00');
+  const [updating, setUpdating] = useState(false);
 
   useEffect(() => {
     fetchDashboardData();
@@ -27,6 +31,26 @@ const DashboardPage = () => {
       setLoading(false);
     }
   };
+  
+  const handleUpdateSchedule = async () => {
+    try {
+      setUpdating(true);
+      const [hour, minute] = newScheduleTime.split(':').map(Number);
+      
+      await api.updateScheduler(hour, minute);
+      
+      // Refresh dashboard data
+      await fetchDashboardData();
+      
+      setEditingSchedule(false);
+      alert(`Schedule updated to ${newScheduleTime} BDT`);
+    } catch (error: any) {
+      console.error('Failed to update schedule:', error);
+      alert(error.response?.data?.detail || 'Failed to update schedule');
+    } finally {
+      setUpdating(false);
+    }
+  };
 
   if (loading) {
     return (
@@ -36,7 +60,7 @@ const DashboardPage = () => {
     );
   }
 
-  const biasedPercentage = statistics
+  const biasedPercentage = statistics && statistics.total_articles > 0
     ? ((statistics.biased_count / statistics.total_articles) * 100).toFixed(1)
     : '0';
 
@@ -116,7 +140,8 @@ const DashboardPage = () => {
                   ? new Date(schedulerStatus.next_run).toLocaleString('en-US', {
                       dateStyle: 'medium',
                       timeStyle: 'short',
-                    })
+                      timeZone: 'Asia/Dhaka',
+                    }) + ' BDT'
                   : 'Not Scheduled'}
               </div>
               <div className="text-xs text-gray-500 mt-1">
@@ -126,9 +151,54 @@ const DashboardPage = () => {
             </div>
 
             <div className="bg-gray-800/50 rounded-lg p-4 border border-gray-700">
-              <div className="text-sm text-gray-400 mb-1">Schedule Configuration</div>
-              <div className="text-xl font-semibold text-white">Daily at 6:00 AM BDT</div>
-              <div className="text-xs text-gray-500 mt-1">Automatic scraping enabled</div>
+              <div className="flex items-center justify-between mb-2">
+                <div className="text-sm text-gray-400">Schedule Configuration</div>
+                <button
+                  onClick={() => setEditingSchedule(!editingSchedule)}
+                  className="p-1.5 hover:bg-gray-700/50 rounded-lg transition-colors"
+                  title="Change schedule"
+                >
+                  <Edit2 className="w-4 h-4 text-gray-400 hover:text-white" />
+                </button>
+              </div>
+              
+              {editingSchedule ? (
+                <div className="space-y-3">
+                  <div className="flex items-center space-x-2">
+                    <Clock className="w-5 h-5 text-blue-400" />
+                    <input
+                      type="time"
+                      value={newScheduleTime}
+                      onChange={(e) => setNewScheduleTime(e.target.value)}
+                      className="bg-gray-700 text-white px-3 py-1.5 rounded-lg border border-gray-600 focus:border-blue-500 focus:outline-none text-sm"
+                    />
+                    <span className="text-sm text-gray-400">BDT</span>
+                  </div>
+                  <div className="flex space-x-2">
+                    <button
+                      onClick={handleUpdateSchedule}
+                      disabled={updating}
+                      className="flex-1 bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded-lg text-sm font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      {updating ? 'Saving...' : 'Save'}
+                    </button>
+                    <button
+                      onClick={() => setEditingSchedule(false)}
+                      disabled={updating}
+                      className="flex-1 bg-gray-700 hover:bg-gray-600 text-white px-3 py-1.5 rounded-lg text-sm font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <>
+                  <div className="text-xl font-semibold text-white">
+                    {schedulerStatus?.schedule || 'Daily at 6:00 AM BDT'}
+                  </div>
+                  <div className="text-xs text-gray-500 mt-1">Automatic scraping enabled</div>
+                </>
+              )}
             </div>
           </div>
 

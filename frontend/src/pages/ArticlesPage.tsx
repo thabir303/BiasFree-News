@@ -8,6 +8,7 @@ const ArticlesPage = () => {
   const [processingIds, setProcessingIds] = useState<Set<number>>(new Set());
   const [filters, setFilters] = useState({
     source: '',
+    category: '',
     is_biased: '',
     skip: 0,
     limit: 12,
@@ -28,6 +29,7 @@ const ArticlesPage = () => {
         delete params.is_biased;
       }
       if (!params.source) delete params.source;
+      if (!params.category) delete params.category;
 
       const response = await api.getArticles(params);
       setArticles(response.articles);
@@ -116,7 +118,7 @@ const ArticlesPage = () => {
 
         {/* Filters */}
         <div className="bg-gray-900/50 backdrop-blur-sm rounded-xl border border-gray-800 p-6 mb-6">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
             <div>
               <label className="block text-sm font-medium text-gray-300 mb-2">
                 Newspaper Source
@@ -131,6 +133,23 @@ const ArticlesPage = () => {
                 <option value="daily_star">Daily Star</option>
                 <option value="jugantor">যুগান্তর</option>
                 <option value="samakal">সমকাল</option>
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-300 mb-2">
+                Category
+              </label>
+              <select
+                value={filters.category}
+                onChange={(e) => handleFilterChange('category', e.target.value)}
+                className="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-2 text-white focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+              >
+                <option value="">All Categories</option>
+                <option value="রাজনীতি">রাজনীতি</option>
+                <option value="বিশ্ব">বিশ্ব</option>
+                <option value="মতামত">মতামত</option>
+                <option value="বাংলাদেশ">বাংলাদেশ</option>
               </select>
             </div>
 
@@ -189,9 +208,16 @@ const ArticlesPage = () => {
               >
                 {/* Header */}
                 <div className="flex items-start justify-between mb-3">
-                  <span className="px-3 py-1 rounded-full text-xs font-medium bg-gray-800 text-gray-300">
-                    {article.source.replace('_', ' ')}
-                  </span>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="px-3 py-1 rounded-full text-xs font-medium bg-gray-800 text-gray-300">
+                      {article.source.replace('_', ' ')}
+                    </span>
+                    {article.category && (
+                      <span className="px-3 py-1 rounded-full text-xs font-medium bg-primary-500/10 text-primary-400 border border-primary-500/30">
+                        {article.category}
+                      </span>
+                    )}
+                  </div>
                   {article.is_biased && (
                     <span
                       className={`px-3 py-1 rounded-full text-xs font-bold border ${getBiasColor(

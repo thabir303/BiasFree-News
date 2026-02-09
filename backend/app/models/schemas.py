@@ -136,6 +136,7 @@ class ScrapedArticle(BaseModel):
     url: str
     published_date: Optional[str] = None
     source: str
+    category: Optional[str] = None  # রাজনীতি, বিশ্ব, মতামত, বাংলাদেশ
 
 
 class ScrapeResponse(BaseModel):

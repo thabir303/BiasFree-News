@@ -44,6 +44,7 @@ class Article(Base):
     
     id = Column(Integer, primary_key=True, index=True)
     source = Column(String(50), nullable=False, index=True)  # prothom_alo, daily_star, etc.
+    category = Column(String(50), nullable=True, index=True)  # রাজনীতি, বিশ্ব, মতামত, বাংলাদেশ
     url = Column(String(500), unique=True, nullable=False)
     title = Column(String(500), nullable=True)
     original_content = Column(Text, nullable=False)

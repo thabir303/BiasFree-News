@@ -19,7 +19,7 @@ const ManualScrapingPage = () => {
 
   const newspapers: Newspaper[] = [
     { key: 'prothom_alo', name: 'Prothom Alo', base_url: 'https://www.prothomalo.com', language: 'bn', enabled: true },
-    { key: 'daily_star', name: 'The Daily Star', base_url: 'https://www.thedailystar.net', language: 'en', enabled: true },
+    { key: 'daily_star', name: 'The Daily Star', base_url: 'https://bangla.thedailystar.net', language: 'en', enabled: true },
     { key: 'jugantor', name: 'Jugantor', base_url: 'https://www.jugantor.com', language: 'bn', enabled: true },
     { key: 'samakal', name: 'Samakal', base_url: 'https://samakal.com', language: 'bn', enabled: true },
   ];
@@ -40,10 +40,14 @@ const ManualScrapingPage = () => {
       
       if (status.status === 'completed') {
         setLoading(false);
+        const stats = status.statistics || {};
         setResult({
           status: 'success',
           message: 'Scraping completed successfully!',
-          ...status.statistics
+          total_scraped: stats.total_scraped ?? 0,
+          total_processed: stats.total_processed ?? 0,
+          by_source: stats.by_source ?? {},
+          errors: stats.errors ?? [],
         });
         if (pollingRef.current) {
           clearInterval(pollingRef.current);
@@ -103,9 +107,17 @@ const ManualScrapingPage = () => {
           pollJobStatus(response.job_id);
         }, 3000); // Poll every 3 seconds
       } else {
-        // Direct response (for backward compatibility)
+        // Direct response - flatten statistics into result for display
         setLoading(false);
-        setResult(response);
+        const stats = response.statistics || {};
+        setResult({
+          status: response.status || 'completed',
+          message: response.message || 'Scraping completed successfully',
+          total_scraped: stats.total_scraped ?? response.total_scraped ?? 0,
+          total_processed: stats.total_processed ?? response.total_processed ?? 0,
+          by_source: stats.by_source ?? response.by_source ?? {},
+          errors: stats.errors ?? response.errors ?? [],
+        });
       }
     } catch (err: any) {
       setLoading(false);

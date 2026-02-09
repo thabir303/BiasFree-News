@@ -32,11 +32,13 @@ class OptimizedNewspaperScraper:
         self.end_date = datetime.strptime(end_date, "%Y-%m-%d")
         
         # Optimized headers for faster requests
+        # NOTE: Do NOT include 'br' (Brotli) in Accept-Encoding unless
+        # the 'brotli' package is installed - requests can't decode it natively
         self.headers = {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
             'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-            'Accept-Language': 'en-US,en;q=0.5',
-            'Accept-Encoding': 'gzip, deflate, br',
+            'Accept-Language': 'en-US,en;q=0.5,bn;q=0.3',
+            'Accept-Encoding': 'gzip, deflate',
             'Connection': 'keep-alive',
             'Upgrade-Insecure-Requests': '1',
             'Cache-Control': 'max-age=0'
@@ -115,15 +117,24 @@ class OptimizedProthomAloScraper(OptimizedNewspaperScraper):
     BASE_URL = "https://www.prothomalo.com"
     API_SEARCH_URL = "https://www.prothomalo.com/api/v1/search"
     PAGE_SIZE = 100
-    ARTICLES_PER_SECTION = 30  # Reduced from 50 for faster processing
-    MAX_PARALLEL_FETCHES = 15  # Increased from 10 for better parallelism
+    ARTICLES_PER_SECTION = 50
+    MAX_PARALLEL_FETCHES = 10
     
-    # Optimized section groups - fewer but more relevant
+    # Section groups matching Prothom Alo's section IDs
     OPTIMIZED_SECTIONS = [
-        '22237',  # রাজনীতি (Politics) - Most important
+        '22237',  # রাজনীতি (Politics)
         '17533,17535,17536,17538,22321,22236',  # বাংলাদেশ (Bangladesh)
         '17690,17693,17691,22329,22327,22330,17694',  # মতামত (Opinion)
+        '17584,17586,22323,35621,17585,17587,17588,17589,17591',  # বিশ্ব (World/International)
     ]
+    
+    # Map section IDs to category names
+    SECTION_CATEGORY_MAP = {
+        '22237': 'রাজনীতি',
+        '17533,17535,17536,17538,22321,22236': 'বাংলাদেশ',
+        '17690,17693,17691,22329,22327,22330,17694': 'মতামত',
+        '17584,17586,22323,35621,17585,17587,17588,17589,17591': 'বিশ্ব',
+    }
     
     def __init__(self, start_date: str, end_date: str, section_ids: Optional[List[str]] = None):
         super().__init__(start_date, end_date)
@@ -156,16 +167,18 @@ class OptimizedProthomAloScraper(OptimizedNewspaperScraper):
         return all_articles
     
     def scrape_section(self, section_ids: str) -> List[ScrapedArticle]:
-        """Optimized section scraping with better error handling."""
+        """Optimized section scraping - extracts content from API response directly."""
         start_dt = self.start_date
         end_dt = self.end_date.replace(hour=23, minute=59, second=59)
         
         published_after = int(start_dt.timestamp() * 1000)
         published_before = int(end_dt.timestamp() * 1000)
         
-        logger.info(f"  Processing section: {section_ids}")
+        # Look up Bengali category name for this section group
+        category = self.SECTION_CATEGORY_MAP.get(section_ids)
+        logger.info(f"  Processing section: {section_ids} (category: {category})")
         
-        # Step 1: Collect story metadata efficiently
+        # Step 1: Collect stories with content from API (using 'cards' field)
         stories_to_process = []
         offset = 0
         max_stories = self.ARTICLES_PER_SECTION
@@ -175,13 +188,14 @@ class OptimizedProthomAloScraper(OptimizedNewspaperScraper):
                 'published-after': published_after,
                 'published-before': published_before,
                 'section-id': section_ids,
-                'type': 'text,team-bio,listicle',
+                'type': 'text,team-bio,listicle,',
                 'limit': min(self.PAGE_SIZE, max_stories - len(stories_to_process)),
-                'offset': offset
+                'offset': offset,
+                'fields': 'headline,slug,published-at,first-published-at,subheadline,summary,cards'
             }
             
             try:
-                response = self.session.get(self.API_SEARCH_URL, params=params, timeout=15)
+                response = self.session.get(self.API_SEARCH_URL, params=params, timeout=20)
                 response.raise_for_status()
                 
                 if not response.text or response.text.strip() == '':
@@ -194,12 +208,12 @@ class OptimizedProthomAloScraper(OptimizedNewspaperScraper):
                 if not stories:
                     break
                 
-                # Filter and collect valid stories
+                # Filter and collect valid stories with content
                 for story in stories:
                     if len(stories_to_process) >= max_stories:
                         break
                     
-                    metadata = self._extract_story_metadata(story)
+                    metadata = self._extract_story_with_content(story, category)
                     if metadata and self.add_seen_url(metadata['url']):
                         stories_to_process.append(metadata)
                 
@@ -208,37 +222,55 @@ class OptimizedProthomAloScraper(OptimizedNewspaperScraper):
                 if len(stories) < self.PAGE_SIZE:
                     break
                     
-                # Reduced delay between API calls
-                time.sleep(0.2)  # Reduced from 0.5s
+                time.sleep(0.3)
                     
             except Exception as e:
                 logger.error(f"  API request failed for section {section_ids}: {str(e)}")
                 break
         
-        logger.info(f"  Section {section_ids}: Collected {len(stories_to_process)} story metadata")
+        logger.info(f"  Section {section_ids}: Collected {len(stories_to_process)} stories")
         
-        # Step 2: Fetch content in parallel with increased workers
+        # Step 2: Create articles - content already extracted from API
+        # For stories without API content, fetch from page in parallel
         articles = []
+        stories_needing_fetch = []
         
-        with ThreadPoolExecutor(max_workers=self.MAX_PARALLEL_FETCHES) as content_executor:
-            content_futures = [
-                content_executor.submit(self._fetch_and_create_article, story)
-                for story in stories_to_process
-            ]
-            
-            for future in as_completed(content_futures):
-                try:
-                    article = future.result()
-                    if article:
-                        articles.append(article)
-                except Exception as e:
-                    logger.error(f"  Failed to fetch article content: {str(e)}")
+        for story in stories_to_process:
+            if story.get('content') and len(story['content']) > 100:
+                # Content already available from API
+                article = self._create_article_from_metadata(story)
+                if article:
+                    articles.append(article)
+            else:
+                stories_needing_fetch.append(story)
         
-        logger.info(f"  Section {section_ids}: Successfully fetched {len(articles)} articles")
+        logger.info(f"  Section {section_ids}: {len(articles)} articles from API, {len(stories_needing_fetch)} need page fetch")
+        
+        # Fetch remaining articles from their pages
+        if stories_needing_fetch:
+            with ThreadPoolExecutor(max_workers=self.MAX_PARALLEL_FETCHES) as content_executor:
+                content_futures = [
+                    content_executor.submit(self._fetch_and_create_article, story)
+                    for story in stories_needing_fetch
+                ]
+                
+                for future in as_completed(content_futures):
+                    try:
+                        article = future.result()
+                        if article:
+                            articles.append(article)
+                    except Exception as e:
+                        logger.error(f"  Failed to fetch article content: {str(e)}")
+        
+        logger.info(f"  Section {section_ids}: Total {len(articles)} articles")
         return articles
     
-    def _extract_story_metadata(self, story_data: Dict) -> Optional[Dict]:
-        """Optimized metadata extraction."""
+    def _extract_story_with_content(self, story_data: Dict, category: Optional[str] = None) -> Optional[Dict]:
+        """Extract story metadata and content from API response.
+        
+        The search API returns cards > story-elements with full article text
+        when 'cards' is included in the fields parameter.
+        """
         try:
             headline = story_data.get('headline', '').strip()
             slug = story_data.get('slug', '').strip()
@@ -246,7 +278,7 @@ class OptimizedProthomAloScraper(OptimizedNewspaperScraper):
             if not headline or not slug:
                 return None
             
-            # Skip problematic sections more efficiently
+            # Skip non-article content
             skip_sections = ['feature/', 'features/', 'activities/', 'activity/', 'quiz/', 'games/', 'video/']
             if any(section in slug for section in skip_sections):
                 return None
@@ -262,15 +294,66 @@ class OptimizedProthomAloScraper(OptimizedNewspaperScraper):
             if not self.is_within_date_range(article_date):
                 return None
             
+            # Extract content from cards > story-elements
+            content = self._extract_content_from_cards(story_data.get('cards', []))
+            
             return {
                 'headline': headline,
                 'url': url,
                 'published_date': article_date.strftime('%Y-%m-%d'),
-                'summary': story_data.get('summary', '') or story_data.get('subheadline', '')
+                'summary': story_data.get('summary', '') or story_data.get('subheadline', ''),
+                'content': content,
+                'category': category
             }
             
         except Exception as e:
-            logger.debug(f"Failed to extract metadata: {str(e)}")
+            logger.debug(f"Failed to extract story data: {str(e)}")
+            return None
+    
+    def _extract_content_from_cards(self, cards: List[Dict]) -> str:
+        """Extract text content from API cards > story-elements.
+        
+        Each card contains story-elements with type='text' having HTML content.
+        """
+        content_parts = []
+        
+        for card in cards:
+            elements = card.get('story-elements', [])
+            for element in elements:
+                if element.get('type') == 'text':
+                    html_text = element.get('text', '')
+                    if html_text:
+                        # Parse HTML tags from story-element text
+                        soup = BeautifulSoup(html_text, 'html.parser')
+                        text = soup.get_text(strip=True)
+                        if text and len(text) > 10:
+                            # Skip navigation/related text
+                            if not text.startswith(('আরও পড়ুন', 'সম্পর্কিত', 'ছবি:', 'ভিডিও:')):
+                                content_parts.append(text)
+        
+        return ' '.join(content_parts)
+    
+    def _create_article_from_metadata(self, metadata: Dict) -> Optional[ScrapedArticle]:
+        """Create a ScrapedArticle from metadata that already has content."""
+        try:
+            content = metadata.get('content', '')
+            if not content or len(content) < 50:
+                return None
+            
+            # Truncate content to 2000 characters for LLM processing efficiency
+            if len(content) > 2000:
+                content = content[:2000]
+            
+            return ScrapedArticle(
+                title=metadata['headline'],
+                content=content,
+                url=metadata['url'],
+                published_date=metadata['published_date'],
+                source="prothom_alo",
+                category=metadata.get('category')
+            )
+        except Exception as e:
+            logger.warning(f"Failed to create article from metadata: {str(e)}")
             return None
     
     def _fetch_and_create_article(self, metadata: Dict) -> Optional[ScrapedArticle]:
@@ -298,7 +381,8 @@ class OptimizedProthomAloScraper(OptimizedNewspaperScraper):
                 content=content,
                 url=metadata['url'],
                 published_date=metadata['published_date'],
-                source="prothom_alo"
+                source="prothom_alo",
+                category=metadata.get('category')
             )
             
         except Exception as e:
@@ -306,13 +390,17 @@ class OptimizedProthomAloScraper(OptimizedNewspaperScraper):
             return None
     
     def fetch_article_content(self, url: str) -> str:
-        """Optimized content fetching with comprehensive selector fallbacks."""
+        """Fetch article content from page HTML with comprehensive selector fallbacks."""
         try:
             response = self.make_request(url)
             if not response:
                 return ""
             
-            soup = BeautifulSoup(response.text, 'html.parser')
+            # Use 'lxml' parser for better handling of edge cases
+            try:
+                soup = BeautifulSoup(response.text, 'lxml')
+            except Exception:
+                soup = BeautifulSoup(response.text, 'html.parser')
             content_parts = []
             
             # Comprehensive list of content selectors (most specific to most general)
@@ -375,140 +463,96 @@ class OptimizedProthomAloScraper(OptimizedNewspaperScraper):
 
 
 class OptimizedJugantorScraper(OptimizedNewspaperScraper):
-    """Optimized scraper for Jugantor."""
+    """Optimized scraper for Jugantor - Category-based scraping."""
     
     BASE_URL = "https://www.jugantor.com"
-    ARCHIVE_BASE_URL = "https://www.jugantor.com/archive"
+    
+    # Only scrape these 4 categories
+    CATEGORY_MAP = {
+        '/opinion': 'মতামত',
+        '/national': 'বাংলাদেশ',
+        '/politics': 'রাজনীতি',
+        '/international': 'বিশ্ব',
+    }
     
     def scrape_articles(self) -> List[ScrapedArticle]:
-        """Optimized Jugantor scraping with parallel processing."""
-        logger.info("Starting optimized Jugantor scraping...")
+        """Optimized Jugantor category-based scraping with parallel processing."""
+        logger.info("Starting optimized Jugantor category-based scraping...")
         logger.info(f"Date range: {self.start_date.strftime('%Y-%m-%d')} to {self.end_date.strftime('%Y-%m-%d')}")
         
         all_articles = []
-        dates_to_scrape = []
-        current_date = self.start_date
         
-        # Generate date list
-        while current_date <= self.end_date:
-            dates_to_scrape.append(current_date.strftime('%Y-%m-%d'))
-            current_date += timedelta(days=1)
-        
-        logger.info(f"Total dates to scrape: {len(dates_to_scrape)}")
-        
-        # Process dates in parallel (limited to 3 concurrent workers)
+        # Process categories in parallel
         with ThreadPoolExecutor(max_workers=3) as executor:
-            future_to_date = {
-                executor.submit(self.scrape_articles_for_date, date): date 
-                for date in dates_to_scrape
+            futures = {
+                executor.submit(self._scrape_category, path, category): category
+                for path, category in self.CATEGORY_MAP.items()
             }
             
-            for future in as_completed(future_to_date):
-                date = future_to_date[future]
+            for future in as_completed(futures):
+                category = futures[future]
                 try:
                     articles = future.result()
                     all_articles.extend(articles)
-                    logger.info(f"Completed {date}: {len(articles)} articles (Total: {len(all_articles)})")
+                    logger.info(f"Category '{category}': {len(articles)} articles (Total: {len(all_articles)})")
                 except Exception as e:
-                    logger.error(f"Failed {date}: {str(e)}")
+                    logger.error(f"Failed category '{category}': {str(e)}")
         
         logger.info(f"Jugantor: Scraped {len(all_articles)} total articles")
         return all_articles
     
-    def scrape_articles_for_date(self, date: str) -> List[ScrapedArticle]:
-        """Optimized daily scraping."""
-        all_articles = []
-        page = 1
-        max_pages = 20  # Reduced from 50 to limit processing
-        
-        # Collect article URLs more efficiently
-        all_article_urls = []
-        
-        while page <= max_pages:
-            archive_url = self.get_archive_url(date, page)
-            article_urls = self.extract_article_links(archive_url)
-            
-            if not article_urls:
-                break
-            
-            # Filter out already seen URLs immediately
-            new_urls = [url for url in article_urls if self.add_seen_url(url)]
-            all_article_urls.extend(new_urls)
-            
-            page += 1
-            # Reduced delay
-            time.sleep(0.1)  # Reduced from 0.5s
-        
-        if not all_article_urls:
-            return []
-        
-        logger.info(f"  Total new article URLs for {date}: {len(all_article_urls)}")
-        
-        # Process articles in parallel with limited workers
-        with ThreadPoolExecutor(max_workers=5) as executor:
-            future_to_url = {
-                executor.submit(self.scrape_article, url, date): url 
-                for url in all_article_urls
-            }
-            
-            for future in as_completed(future_to_url):
-                try:
-                    article = future.result()
-                    if article:
-                        all_articles.append(article)
-                except Exception as e:
-                    logger.debug(f"Failed to scrape article: {str(e)}")
-        
-        return all_articles
-    
-    def get_archive_url(self, date: str, page: int = None) -> str:
-        """Generate archive URL for a specific date and page."""
-        if page is None or page == 1:
-            return f"{self.ARCHIVE_BASE_URL}?date={date}"
-        else:
-            return f"{self.ARCHIVE_BASE_URL}?date={date}&page={page}"
-    
-    def extract_article_links(self, archive_url: str) -> List[str]:
-        """Extract article links from archive page."""
-        response = self.make_request(archive_url)
-        if not response:
-            return []
+    def _scrape_category(self, path: str, category: str) -> List[ScrapedArticle]:
+        """Scrape articles from a single category page."""
+        articles = []
+        category_url = f"{self.BASE_URL}{path}"
         
         try:
+            response = self.make_request(category_url)
+            if not response:
+                return articles
+            
             soup = BeautifulSoup(response.content, 'lxml')
             article_links = []
             
-            # More focused link extraction
             for link in soup.find_all('a', href=True):
                 href = link.get('href')
                 if not href:
                     continue
                 
-                # Accept various article URL patterns
-                valid_patterns = [
-                    '/national/', '/politics/', '/international/', 
-                    '/sports/', '/entertainment/', '/economics/',
-                    '/country/', '/city/', '/lifestyle/', '/opinion/'
-                ]
-                
-                if any(pat in href for pat in valid_patterns):
+                # Accept article links containing the category path
+                if path in href or '/news/' in href:
                     full_url = urljoin(self.BASE_URL, href)
-                    if '/archive' not in full_url:
+                    if '/archive' not in full_url and self.add_seen_url(full_url):
                         article_links.append(full_url)
             
-            # Remove duplicates efficiently
-            return list(set(article_links))
+            article_links = list(set(article_links))[:50]
+            logger.info(f"  Found {len(article_links)} links for category '{category}'")
+            
+            # Fetch articles in parallel
+            with ThreadPoolExecutor(max_workers=5) as executor:
+                future_to_url = {
+                    executor.submit(self._scrape_article, url, category): url
+                    for url in article_links
+                }
+                
+                for future in as_completed(future_to_url):
+                    try:
+                        article = future.result()
+                        if article:
+                            articles.append(article)
+                    except Exception as e:
+                        logger.debug(f"Failed to scrape article: {str(e)}")
             
         except Exception as e:
-            logger.debug(f"Failed to extract links from {archive_url}: {str(e)}")
-            return []
+            logger.error(f"Failed to scrape Jugantor category {category}: {str(e)}")
+        
+        return articles
     
-    def clean_content(self, content: str) -> str:
+    def _clean_content(self, content: str) -> str:
         """Optimized content cleaning."""
         if not content:
             return ""
         
-        # More efficient regex patterns
         unwanted_patterns = [
             r'ফলো করুন.*?যুগান্তর মেসেঞ্জার',
             r'যুগান্তর প্রতিবেদন.*?পিএম',
@@ -520,17 +564,14 @@ class OptimizedJugantorScraper(OptimizedNewspaperScraper):
         for pattern in unwanted_patterns:
             content = re.sub(pattern, '', content, flags=re.DOTALL | re.IGNORECASE)
         
-        # More efficient string operations
         if "সম্পর্কিত খবর" in content:
             content = content.split("সম্পর্কিত খবর")[0]
         
-        # Clean up whitespace
         content = re.sub(r'\s+', ' ', content.strip())
-        
         return content
     
-    def scrape_article(self, url: str, date: str) -> Optional[ScrapedArticle]:
-        """Optimized article scraping."""
+    def _scrape_article(self, url: str, category: str) -> Optional[ScrapedArticle]:
+        """Scrape individual Jugantor article with category."""
         response = self.make_request(url)
         if not response:
             return None
@@ -538,20 +579,19 @@ class OptimizedJugantorScraper(OptimizedNewspaperScraper):
         try:
             soup = BeautifulSoup(response.content, 'lxml')
             
-            # Faster title extraction
+            # Title extraction
             title = None
-            title_selectors = ['h1', 'h1.title', '.headline h1', '.news-title', '.article-title']
-            for selector in title_selectors:
+            for selector in ['h1', 'h1.title', '.headline h1', '.news-title']:
                 title_tag = soup.select_one(selector)
                 if title_tag:
                     title = title_tag.get_text(strip=True)
-                    if title and len(title) > 5:  # Ensure meaningful title
+                    if title and len(title) > 5:
                         break
             
             if not title:
                 return None
             
-            # Comprehensive content extraction with multiple strategies
+            # Content extraction
             content_parts = []
             content_selectors = [
                 'div.news-element-text',
@@ -561,17 +601,14 @@ class OptimizedJugantorScraper(OptimizedNewspaperScraper):
                 'div.article-content',
                 'div.news-content',
                 'div.story-content',
-                'div[itemprop="articleBody"]',
                 'article .content',
                 'article',
-                '.main-content'
             ]
             
             for selector in content_selectors:
                 try:
                     content_div = soup.select_one(selector)
                     if content_div:
-                        # Try to get paragraphs first
                         paragraphs = content_div.find_all(['p', 'div'], recursive=True, limit=100)
                         if paragraphs:
                             for p in paragraphs:
@@ -579,7 +616,6 @@ class OptimizedJugantorScraper(OptimizedNewspaperScraper):
                                 if text and len(text) > 20 and not text.startswith(('আরও পড়ুন', 'সম্পর্কিত', 'ছবি')):
                                     content_parts.append(text)
                         else:
-                            # Fallback: get all text
                             text = content_div.get_text(strip=True)
                             if text and len(text) > 50:
                                 content_parts.append(text)
@@ -589,27 +625,44 @@ class OptimizedJugantorScraper(OptimizedNewspaperScraper):
                 except Exception:
                     continue
             
-            # If still no content, try all paragraphs from body
-            if not content_parts:
-                body_paragraphs = soup.find_all('p', limit=50)
-                for p in body_paragraphs:
-                    text = p.get_text(strip=True)
-                    if text and len(text) > 30:
-                        content_parts.append(text)
-            
             content = ' '.join(content_parts)
-            content = self.clean_content(content)
+            content = self._clean_content(content)
             
             if not content or len(content) < 50:
-                logger.debug(f"Insufficient content for {url}: {len(content)} chars")
                 return None
+            
+            # Truncate content
+            if len(content) > 2000:
+                content = content[:2000]
+            
+            # Try to extract date
+            published_date = None
+            date_tag = soup.find('time')
+            if date_tag:
+                published_date = date_tag.get('datetime')
+            if not published_date:
+                meta_date = soup.find('meta', property='article:published_time')
+                if meta_date:
+                    published_date = meta_date.get('content')
+            
+            if published_date:
+                try:
+                    article_date = datetime.fromisoformat(published_date.replace('Z', '+00:00'))
+                    if not self.is_within_date_range(article_date):
+                        return None
+                    published_date = article_date.strftime('%Y-%m-%d')
+                except:
+                    published_date = datetime.now().strftime('%Y-%m-%d')
+            else:
+                published_date = datetime.now().strftime('%Y-%m-%d')
             
             return ScrapedArticle(
                 title=title,
                 content=content,
                 url=url,
-                published_date=date,
-                source="jugantor"
+                published_date=published_date,
+                source="jugantor",
+                category=category
             )
             
         except Exception as e:

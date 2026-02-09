@@ -96,7 +96,6 @@ class ProthomAloScraper(NewspaperScraper):
         '22237',  # রাজনীতি (Politics)
         '17533,17535,17536,17538,22321,22236',  # বাংলাদেশ (Bangladesh)
         '17690,17693,17691,22329,22327,22330,17694',  # মতামত (Opinion)
-        '17736,17737,17739,23426,35867,35868',  # প্রযুক্তি (Technology)
         '17584,17586,22323,35621,17585,17587,17588,17589,17591'  # বিশ্ব (World/International)
     ]
     
@@ -469,132 +468,88 @@ class ProthomAloScraper(NewspaperScraper):
 
 
 class JugantorScraper(NewspaperScraper):
-    """Scraper for Jugantor (Bangla) - All categories using archive system."""
+    """Scraper for Jugantor (Bangla) - Category-based scraping."""
     
     BASE_URL = "https://www.jugantor.com"
-    ARCHIVE_BASE_URL = "https://www.jugantor.com/archive"
+    
+    # Only scrape these 4 categories
+    CATEGORY_MAP = {
+        '/opinion': 'মতামত',
+        '/national': 'বাংলাদেশ',
+        '/politics': 'রাজনীতি',
+        '/international': 'বিশ্ব',
+    }
     
     def __init__(self, start_date: str, end_date: str):
         super().__init__(start_date, end_date)
         self._lock = threading.Lock()
+        self._seen_urls: set = set()
     
     def scrape_articles(self) -> List[ScrapedArticle]:
-        """Scrape articles from Jugantor archive for all categories."""
-        logger.info("Starting Jugantor archive scraping (All categories)...")
+        """Scrape articles from Jugantor by category."""
+        logger.info("Starting Jugantor category-based scraping...")
         logger.info(f"Date range: {self.start_date.strftime('%Y-%m-%d')} to {self.end_date.strftime('%Y-%m-%d')}")
         
         all_articles = []
-        dates_to_scrape = []
-        current_date = self.start_date
         
-        while current_date <= self.end_date:
-            dates_to_scrape.append(current_date.strftime('%Y-%m-%d'))
-            current_date += timedelta(days=1)
-        
-        logger.info(f"Total dates to scrape: {len(dates_to_scrape)}")
-        
-        with ThreadPoolExecutor(max_workers=2) as executor:
-            future_to_date = {
-                executor.submit(self.scrape_articles_for_date, date): date 
-                for date in dates_to_scrape
-            }
-            
-            for future in as_completed(future_to_date):
-                date = future_to_date[future]
-                try:
-                    articles = future.result()
-                    all_articles.extend(articles)
-                    logger.info(f"Completed {date}: {len(articles)} articles")
-                except Exception as e:
-                    logger.error(f"Failed {date}: {str(e)}")
+        for path, category in self.CATEGORY_MAP.items():
+            try:
+                articles = self._scrape_category(path, category)
+                all_articles.extend(articles)
+                logger.info(f"Category '{category}': {len(articles)} articles")
+            except Exception as e:
+                logger.error(f"Failed to scrape Jugantor category {category}: {str(e)}")
         
         logger.info(f"Jugantor: Scraped {len(all_articles)} total articles")
         return all_articles
     
-    def get_archive_url(self, date: str, page: int = None) -> str:
-        """Generate archive URL for a specific date and page."""
-        # Jugantor archive format: /archive?date=YYYY-MM-DD
-        if page is None or page == 1:
-            return f"{self.ARCHIVE_BASE_URL}?date={date}"
-        else:
-            return f"{self.ARCHIVE_BASE_URL}?date={date}&page={page}"
-    
-    def extract_article_links(self, archive_url: str) -> List[str]:
-        """Extract article links from archive page."""
-        response = self.make_request(archive_url)
-        if not response:
-            return []
+    def _scrape_category(self, path: str, category: str) -> List[ScrapedArticle]:
+        """Scrape articles from a category page."""
+        articles = []
+        category_url = f"{self.BASE_URL}{path}"
         
         try:
+            response = self.make_request(category_url)
+            if not response:
+                return articles
+            
             soup = BeautifulSoup(response.content, 'lxml')
             article_links = []
             
-            # Look for article links in archive
             for link in soup.find_all('a', href=True):
                 href = link.get('href')
                 if not href:
                     continue
                 
-                # Accept various article URL patterns
-                valid_patterns = [
-                    '/national/', '/politics/', '/international/', 
-                    '/sports/', '/entertainment/', '/economics/',
-                    '/country/', '/city/', '/lifestyle/', '/opinion/'
-                ]
-                
-                if any(pat in href for pat in valid_patterns):
+                if path in href or '/news/' in href:
                     full_url = urljoin(self.BASE_URL, href)
-                    # Avoid duplicate and non-article links
-                    if '/archive' not in full_url and full_url not in article_links:
-                        article_links.append(full_url)
+                    with self._lock:
+                        if full_url not in self._seen_urls and '/archive' not in full_url:
+                            self._seen_urls.add(full_url)
+                            article_links.append(full_url)
             
-            return list(set(article_links))
+            article_links = list(set(article_links))[:50]
+            
+            with ThreadPoolExecutor(max_workers=2) as executor:
+                future_to_url = {
+                    executor.submit(self._scrape_article, url, category): url
+                    for url in article_links
+                }
+                
+                for future in as_completed(future_to_url):
+                    try:
+                        article = future.result()
+                        if article:
+                            articles.append(article)
+                    except Exception as e:
+                        logger.error(f"Failed to scrape article: {str(e)}")
             
         except Exception as e:
-            logger.error(f"Failed to extract links from {archive_url}: {str(e)}")
-            return []
+            logger.error(f"Failed to scrape Jugantor category {category}: {str(e)}")
+        
+        return articles
     
-    def scrape_articles_for_date(self, date: str) -> List[ScrapedArticle]:
-        """Scrape all articles for a specific date."""
-        all_articles = []
-        page = 1
-        max_pages = 50
-        
-        all_article_urls = []
-        
-        while page <= max_pages:
-            archive_url = self.get_archive_url(date, page)
-            article_urls = self.extract_article_links(archive_url)
-            
-            if not article_urls:
-                break
-            
-            all_article_urls.extend(article_urls)
-            page += 1
-            time.sleep(0.5)
-        
-        if not all_article_urls:
-            return []
-        
-        logger.info(f"  Total article URLs for {date}: {len(all_article_urls)}")
-        
-        with ThreadPoolExecutor(max_workers=2) as executor:
-            future_to_url = {
-                executor.submit(self.scrape_article, url, date): url 
-                for url in all_article_urls
-            }
-            
-            for future in as_completed(future_to_url):
-                try:
-                    article = future.result()
-                    if article:
-                        all_articles.append(article)
-                except Exception as e:
-                    logger.error(f"Failed to scrape article: {str(e)}")
-        
-        return all_articles
-    
-    def clean_content(self, content: str) -> str:
+    def _clean_content(self, content: str) -> str:
         """Clean the content by removing unwanted parts."""
         if not content:
             return ""
@@ -606,27 +561,19 @@ class JugantorScraper(NewspaperScraper):
             r'সর্বশেষ.*?সব খবর',
             r'প্রকাশ:.*?পিএম',
             r'সম্পর্কিত খবর.*',
-            r'যুগান্তর.*?হোয়াটসঅ্যাপ.*?মেসেঞ্জার',
         ]
         
         for pattern in unwanted_patterns:
             content = re.sub(pattern, '', content, flags=re.DOTALL | re.IGNORECASE)
         
-        if "মেসেঞ্জার" in content[:200]:
-            parts = content.split("মেসেঞ্জার", 1)
-            if len(parts) > 1:
-                content = parts[1]
-        
         if "সম্পর্কিত খবর" in content:
             content = content.split("সম্পর্কিত খবর")[0]
         
-        content = re.sub(r'\n+', '\n', content)
-        content = re.sub(r' +', ' ', content)
-        
-        return content.strip()
+        content = re.sub(r'\s+', ' ', content.strip())
+        return content
     
-    def scrape_article(self, url: str, date: str) -> Optional[ScrapedArticle]:
-        """Scrape individual article from Jugantor."""
+    def _scrape_article(self, url: str, category: str) -> Optional[ScrapedArticle]:
+        """Scrape individual article from Jugantor with category."""
         response = self.make_request(url)
         if not response:
             return None
@@ -634,10 +581,9 @@ class JugantorScraper(NewspaperScraper):
         try:
             soup = BeautifulSoup(response.content, 'lxml')
             
-            # Try multiple selectors for title
+            # Title extraction
             title = None
-            title_selectors = ['h1', 'h1.title', '.headline h1', '.news-title', '.article-title']
-            for selector in title_selectors:
+            for selector in ['h1', 'h1.title', '.headline h1', '.news-title']:
                 title_tag = soup.select_one(selector)
                 if title_tag:
                     title = title_tag.get_text(strip=True)
@@ -647,9 +593,8 @@ class JugantorScraper(NewspaperScraper):
             if not title:
                 return None
             
+            # Content extraction
             content_parts = []
-            
-            # Try multiple content selectors
             content_selectors = [
                 'div.news-element-text',
                 'div.content',
@@ -658,7 +603,6 @@ class JugantorScraper(NewspaperScraper):
                 'div.news-content',
                 'article .content',
                 '.story-content',
-                '.news-details'
             ]
             
             for selector in content_selectors:
@@ -672,9 +616,9 @@ class JugantorScraper(NewspaperScraper):
                     if content_parts:
                         break
             
-            # Fallback: get all paragraphs from main article area
+            # Fallback
             if not content_parts:
-                article_tag = soup.find('article') or soup.find('main') or soup.find('div', id='content')
+                article_tag = soup.find('article') or soup.find('main')
                 if article_tag:
                     for p in article_tag.find_all('p'):
                         text = p.get_text(strip=True)
@@ -682,18 +626,43 @@ class JugantorScraper(NewspaperScraper):
                             content_parts.append(text)
             
             content = ' '.join(content_parts)
-            content = self.clean_content(content)
+            content = self._clean_content(content)
             
             if not content or len(content) < 50:
-                logger.debug(f"Content too short for {url}: {len(content) if content else 0} chars")
                 return None
+            
+            # Truncate content
+            if len(content) > 2000:
+                content = content[:2000]
+            
+            # Try to extract date
+            published_date = None
+            date_tag = soup.find('time')
+            if date_tag:
+                published_date = date_tag.get('datetime')
+            if not published_date:
+                meta_date = soup.find('meta', property='article:published_time')
+                if meta_date:
+                    published_date = meta_date.get('content')
+            
+            if published_date:
+                try:
+                    article_date = datetime.fromisoformat(published_date.replace('Z', '+00:00'))
+                    if not self.is_within_date_range(article_date):
+                        return None
+                    published_date = article_date.strftime('%Y-%m-%d')
+                except:
+                    published_date = datetime.now().strftime('%Y-%m-%d')
+            else:
+                published_date = datetime.now().strftime('%Y-%m-%d')
             
             return ScrapedArticle(
                 title=title,
                 content=content,
                 url=url,
-                published_date=date,
-                source="jugantor"
+                published_date=published_date,
+                source="jugantor",
+                category=category
             )
             
         except Exception as e:
@@ -702,74 +671,48 @@ class JugantorScraper(NewspaperScraper):
 
 
 class DailyStarScraper(NewspaperScraper):
-    """Scraper for The Daily Star (English) - All sections."""
+    """Scraper for The Daily Star (Bangla) - Category-based scraping."""
     
-    BASE_URL = "https://www.thedailystar.net"
+    BASE_URL = "https://bangla.thedailystar.net"
+    
+    # Only scrape these 4 categories
+    CATEGORY_MAP = {
+        '/opinion': 'মতামত',
+        '/news/bangladesh': 'বাংলাদেশ',
+        '/news/bangladesh/politics': 'রাজনীতি',
+        '/news/world': 'বিশ্ব',
+    }
     
     def scrape_articles(self) -> List[ScrapedArticle]:
-        """Scrape articles from The Daily Star using archive."""
-        logger.info("Starting Daily Star scraping...")
+        """Scrape articles from The Daily Star by category."""
+        logger.info("Starting Daily Star category-based scraping...")
         logger.info(f"Date range: {self.start_date.strftime('%Y-%m-%d')} to {self.end_date.strftime('%Y-%m-%d')}")
         
         all_articles = []
+        seen_urls: set = set()
         
-        # Scrape from archive for each date
-        current_date = self.start_date
-        while current_date <= self.end_date:
-            date_str = current_date.strftime('%Y-%m-%d')
-            articles = self.scrape_archive_for_date(date_str)
-            all_articles.extend(articles)
-            logger.info(f"Completed {date_str}: {len(articles)} articles")
-            current_date += timedelta(days=1)
+        for path, category in self.CATEGORY_MAP.items():
+            category_url = f"{self.BASE_URL}{path}"
+            logger.info(f"Scraping Daily Star category: {category} ({category_url})")
+            
+            try:
+                articles = self._scrape_category_page(category_url, category, seen_urls)
+                all_articles.extend(articles)
+                logger.info(f"  Category '{category}': {len(articles)} articles")
+            except Exception as e:
+                logger.error(f"Failed to scrape Daily Star category {category}: {str(e)}")
+            
             time.sleep(0.5)
         
-        # Also scrape from category pages for more articles
-        category_urls = [
-            f"{self.BASE_URL}/news/bangladesh",
-            f"{self.BASE_URL}/news/politics",
-            f"{self.BASE_URL}/opinion",
-            f"{self.BASE_URL}/business",
-        ]
-        
-        for category_url in category_urls:
-            try:
-                response = self.make_request(category_url)
-                if not response:
-                    continue
-                
-                soup = BeautifulSoup(response.content, 'lxml')
-                article_links = []
-                
-                for link in soup.find_all('a', href=True):
-                    href = link.get('href')
-                    if href and ('/news/' in href or '/opinion/' in href or '/business/' in href):
-                        full_url = urljoin(self.BASE_URL, href)
-                        if full_url not in [a.url for a in all_articles]:
-                            article_links.append(full_url)
-                
-                article_links = list(set(article_links))[:30]
-                
-                for url in article_links:
-                    article = self.scrape_article(url)
-                    if article:
-                        all_articles.append(article)
-                    time.sleep(0.3)
-                    
-            except Exception as e:
-                logger.error(f"Failed to scrape {category_url}: {str(e)}")
-        
-        logger.info(f"Daily Star: Scraped {len(all_articles)} articles")
+        logger.info(f"Daily Star: Scraped {len(all_articles)} total articles")
         return all_articles
     
-    def scrape_archive_for_date(self, date_str: str) -> List[ScrapedArticle]:
-        """Scrape articles from archive for a specific date."""
+    def _scrape_category_page(self, category_url: str, category: str, seen_urls: set) -> List[ScrapedArticle]:
+        """Scrape articles from a single category page."""
         articles = []
         
-        # Daily Star archive URL format
-        archive_url = f"{self.BASE_URL}/todays-news?date={date_str}"
-        
         try:
-            response = self.make_request(archive_url)
+            response = self.make_request(category_url)
             if not response:
                 return articles
             
@@ -778,25 +721,36 @@ class DailyStarScraper(NewspaperScraper):
             
             for link in soup.find_all('a', href=True):
                 href = link.get('href')
-                if href and '/news/' in href:
+                if href and ('/news/' in href or '/opinion/' in href):
                     full_url = urljoin(self.BASE_URL, href)
-                    article_links.append(full_url)
+                    if full_url not in seen_urls and '/archive' not in full_url:
+                        article_links.append(full_url)
             
             article_links = list(set(article_links))[:50]
+            logger.info(f"  Found {len(article_links)} article links in {category}")
             
-            for url in article_links:
-                article = self.scrape_article(url)
-                if article:
-                    articles.append(article)
-                time.sleep(0.3)
+            with ThreadPoolExecutor(max_workers=3) as executor:
+                future_to_url = {
+                    executor.submit(self._scrape_article_with_category, url, category): url
+                    for url in article_links
+                }
                 
+                for future in as_completed(future_to_url):
+                    try:
+                        article = future.result()
+                        if article and article.url not in seen_urls:
+                            seen_urls.add(article.url)
+                            articles.append(article)
+                    except Exception as e:
+                        logger.debug(f"Failed to scrape article: {str(e)}")
+            
         except Exception as e:
-            logger.error(f"Failed to scrape Daily Star archive for {date_str}: {str(e)}")
+            logger.error(f"Failed to scrape category page {category_url}: {str(e)}")
         
         return articles
     
-    def scrape_article(self, url: str) -> Optional[ScrapedArticle]:
-        """Scrape individual article from Daily Star."""
+    def _scrape_article_with_category(self, url: str, category: str) -> Optional[ScrapedArticle]:
+        """Scrape individual article from Daily Star with category."""
         response = self.make_request(url)
         if not response:
             return None
@@ -855,15 +809,17 @@ class DailyStarScraper(NewspaperScraper):
             if not content or len(content) < 50:
                 return None
             
-            # Try to get published date
-            date_tag = soup.find('time')
-            published_date = None
+            # Truncate content
+            if len(content) > 2000:
+                content = content[:2000]
             
+            # Try to get published date
+            published_date = None
+            date_tag = soup.find('time')
             if date_tag:
                 published_date = date_tag.get('datetime')
             
             if not published_date:
-                # Try meta tag
                 meta_date = soup.find('meta', property='article:published_time')
                 if meta_date:
                     published_date = meta_date.get('content')
@@ -882,7 +838,8 @@ class DailyStarScraper(NewspaperScraper):
                 content=content,
                 url=url,
                 published_date=published_date,
-                source="daily_star"
+                source="daily_star",
+                category=category
             )
             
         except Exception as e:
@@ -987,44 +944,47 @@ class DhakaTribuneScraper(NewspaperScraper):
 
 
 class SamakalScraper(NewspaperScraper):
-    """Scraper for Samakal (Bangla) - All sections."""
+    """Scraper for Samakal (Bangla) - Category-based scraping."""
     
     BASE_URL = "https://samakal.com"
+    
+    # Only scrape these 4 categories
+    CATEGORY_MAP = {
+        'opinion': 'মতামত',
+        'bangladesh': 'বাংলাদেশ',
+        'politics': 'রাজনীতি',
+        'international': 'বিশ্ব',
+    }
     
     def __init__(self, start_date: str, end_date: str):
         super().__init__(start_date, end_date)
         self._lock = threading.Lock()
+        self._seen_urls: set = set()
     
     def scrape_articles(self) -> List[ScrapedArticle]:
-        """Scrape articles from Samakal."""
-        logger.info("Starting Samakal scraping...")
+        """Scrape articles from Samakal by category."""
+        logger.info("Starting Samakal category-based scraping...")
         logger.info(f"Date range: {self.start_date.strftime('%Y-%m-%d')} to {self.end_date.strftime('%Y-%m-%d')}")
         
         all_articles = []
         
-        # Scrape from main category pages
-        categories = [
-            'bangladesh', 'politics', 'economics', 'international',
-            'sports', 'entertainment', 'opinion', 'lifestyle'
-        ]
-        
-        for category in categories:
+        for path, category in self.CATEGORY_MAP.items():
             try:
-                articles = self.scrape_category(category)
+                articles = self._scrape_category(path, category)
                 all_articles.extend(articles)
-                logger.info(f"Category {category}: {len(articles)} articles")
+                logger.info(f"Category '{category}': {len(articles)} articles")
             except Exception as e:
                 logger.error(f"Failed to scrape Samakal category {category}: {str(e)}")
         
         logger.info(f"Samakal: Scraped {len(all_articles)} total articles")
         return all_articles
     
-    def scrape_category(self, category: str) -> List[ScrapedArticle]:
+    def _scrape_category(self, path: str, category: str) -> List[ScrapedArticle]:
         """Scrape articles from a category."""
         articles = []
         
         try:
-            url = f"{self.BASE_URL}/{category}"
+            url = f"{self.BASE_URL}/{path}"
             response = self.make_request(url)
             if not response:
                 return articles
@@ -1032,37 +992,32 @@ class SamakalScraper(NewspaperScraper):
             soup = BeautifulSoup(response.content, 'lxml')
             article_links = []
             
-            # Find article links
+            # Find article links matching category path
             for link in soup.find_all('a', href=True):
                 href = link.get('href')
-                if href and f'/{category}/' in href:
+                if href and (f'/{path}/' in href or '/news/' in href):
                     full_url = urljoin(self.BASE_URL, href)
-                    if full_url not in article_links and '/page/' not in full_url:
-                        article_links.append(full_url)
-            
-            # Also look for general news links
-            for link in soup.find_all('a', href=True):
-                href = link.get('href')
-                if href and '/news/' in href:
-                    full_url = urljoin(self.BASE_URL, href)
-                    if full_url not in article_links:
-                        article_links.append(full_url)
+                    with self._lock:
+                        if full_url not in self._seen_urls and '/page/' not in full_url:
+                            self._seen_urls.add(full_url)
+                            article_links.append(full_url)
             
             article_links = list(set(article_links))[:30]
+            logger.info(f"  Found {len(article_links)} links for Samakal category '{category}'")
             
-            for url in article_links:
-                article = self.scrape_article(url)
+            for article_url in article_links:
+                article = self._scrape_article(article_url, category)
                 if article:
                     articles.append(article)
                 time.sleep(0.3)
                 
         except Exception as e:
-            logger.error(f"Failed to scrape Samakal category {category}: {str(e)}")
+            logger.error(f"Failed to scrape Samakal category {path}: {str(e)}")
         
         return articles
     
-    def scrape_article(self, url: str) -> Optional[ScrapedArticle]:
-        """Scrape individual article from Samakal."""
+    def _scrape_article(self, url: str, category: str) -> Optional[ScrapedArticle]:
+        """Scrape individual article from Samakal with category."""
         response = self.make_request(url)
         if not response:
             return None
@@ -1105,7 +1060,7 @@ class SamakalScraper(NewspaperScraper):
                     if content_parts:
                         break
             
-            # Fallback: try finding paragraphs in main content area
+            # Fallback
             if not content_parts:
                 main_content = soup.find('article') or soup.find('main')
                 if main_content:
@@ -1119,7 +1074,11 @@ class SamakalScraper(NewspaperScraper):
             if not content or len(content) < 50:
                 return None
             
-            # Try to extract date from article
+            # Truncate content
+            if len(content) > 2000:
+                content = content[:2000]
+            
+            # Try to extract date
             published_date = None
             date_tag = soup.find('time')
             if date_tag:
@@ -1146,7 +1105,8 @@ class SamakalScraper(NewspaperScraper):
                 content=content,
                 url=url,
                 published_date=published_date,
-                source="samakal"
+                source="samakal",
+                category=category
             )
             
         except Exception as e:

@@ -69,17 +69,28 @@ class EnhancedNewsScraper:
             
             stats["total_scraped"] = len(articles)
             
+            # Track URLs in this batch to prevent in-batch duplicates
+            seen_urls_in_batch: set = set()
+            
             # Store in database
             for article_data in articles:
                 try:
-                    # Check if article already exists
+                    article_url = article_data["url"]
+                    
+                    # Skip in-batch duplicates
+                    if article_url in seen_urls_in_batch:
+                        stats["duplicates"] += 1
+                        continue
+                    seen_urls_in_batch.add(article_url)
+                    
+                    # Check if article already exists in DB
                     existing = self.db.query(Article).filter(
-                        Article.url == article_data["url"]
+                        Article.url == article_url
                     ).first()
                     
                     if existing:
                         stats["duplicates"] += 1
-                        logger.debug(f"Duplicate article skipped: {article_data['url']}")
+                        logger.debug(f"Duplicate article skipped: {article_url}")
                         continue
                     
                     # Convert published_date to proper datetime object
@@ -112,7 +123,8 @@ class EnhancedNewsScraper:
                     # Create new article
                     article = Article(
                         source=source,
-                        url=article_data["url"],
+                        category=article_data.get("category"),
+                        url=article_url,
                         title=article_data.get("title"),
                         original_content=article_data["content"],
                         published_date=pub_date,
@@ -121,6 +133,16 @@ class EnhancedNewsScraper:
                     )
                     
                     self.db.add(article)
+                    # Flush to detect UNIQUE constraint errors per-article
+                    # instead of failing the entire batch on commit
+                    try:
+                        self.db.flush()
+                    except Exception:
+                        self.db.rollback()
+                        stats["duplicates"] += 1
+                        logger.debug(f"Duplicate article (DB constraint): {article_url}")
+                        continue
+                    
                     stats["new_articles"] += 1
                     
                 except Exception as e:
@@ -198,7 +220,8 @@ class EnhancedNewsScraper:
                     "url": article.url,
                     "title": article.title,
                     "content": article.content,
-                    "published_date": article.published_date
+                    "published_date": article.published_date,
+                    "category": article.category
                 })
             
             logger.info(f"Total articles scraped from {config.key}: {len(articles)}")

@@ -123,6 +123,7 @@ export const authApi = {
 export interface Article {
     id: number;
     source: string;
+    category: string | null;
     url: string;
     title: string;
     original_content: string;
@@ -176,6 +177,7 @@ export interface Newspaper {
 export interface SchedulerStatus {
     running: boolean;
     next_run?: string;
+    schedule?: string;
     jobs: Array<{
         id: string;
         name: string;
@@ -209,6 +211,7 @@ export const api = {
     // Get articles with filters
     getArticles: async (params?: {
         source?: string;
+        category?: string;
         is_biased?: boolean;
         processed?: boolean;
         skip?: number;
@@ -239,6 +242,12 @@ export const api = {
     // Get scheduler status
     getSchedulerStatus: async (): Promise<SchedulerStatus> => {
         const response = await apiClient.get<SchedulerStatus>('/scheduler/status');
+        return response.data;
+    },
+    
+    // Update scheduler time (Admin only)
+    updateScheduler: async (hour: number, minute: number): Promise<any> => {
+        const response = await apiClient.post(`/scheduler/update?hour=${hour}&minute=${minute}`);
         return response.data;
     },
 

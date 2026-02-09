@@ -205,6 +205,11 @@ const ArticleDetailPage = () => {
                 <span className="px-3 py-1 bg-gray-800 rounded-full">
                   📰 {article.source.replace('_', ' ')}
                 </span>
+                {article.category && (
+                  <span className="px-3 py-1 bg-primary-500/10 text-primary-400 border border-primary-500/30 rounded-full">
+                    📂 {article.category}
+                  </span>
+                )}
                 <span className="px-3 py-1 bg-gray-800 rounded-full">
                   📅 {formatDate(article.scraped_at)}
                 </span>
