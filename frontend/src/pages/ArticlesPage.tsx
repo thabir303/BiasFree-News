@@ -2,96 +2,93 @@ import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { api, type Article } from '../services/api';
 
+const CATEGORIES = [
+  { key: 'রাজনীতি', label: 'রাজনীতি', sublabel: 'Politics', icon: '🏛️', color: 'from-blue-500 to-indigo-600' },
+  { key: 'বিশ্ব', label: 'বিশ্ব', sublabel: 'World', icon: '🌍', color: 'from-emerald-500 to-teal-600' },
+  { key: 'মতামত', label: 'মতামত', sublabel: 'Opinion', icon: '💬', color: 'from-amber-500 to-orange-600' },
+  { key: 'বাংলাদেশ', label: 'বাংলাদেশ', sublabel: 'Bangladesh', icon: '🇧🇩', color: 'from-red-500 to-rose-600' },
+];
+
+interface CategoryData {
+  articles: Article[];
+  total: number;
+  loading: boolean;
+}
+
 const ArticlesPage = () => {
-  const [articles, setArticles] = useState<Article[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [categoryData, setCategoryData] = useState<Record<string, CategoryData>>({});
   const [processingIds, setProcessingIds] = useState<Set<number>>(new Set());
-  const [filters, setFilters] = useState({
-    source: '',
-    category: '',
-    is_biased: '',
-    skip: 0,
-    limit: 12,
-  });
-  const [total, setTotal] = useState(0);
+  const [initialLoading, setInitialLoading] = useState(true);
 
   useEffect(() => {
-    fetchArticles();
-  }, [filters]);
+    fetchAllCategories();
+  }, []);
 
-  const fetchArticles = async () => {
-    setLoading(true);
+  const fetchAllCategories = async () => {
+    setInitialLoading(true);
     try {
-      const params: any = { ...filters };
-      if (params.is_biased !== '') {
-        params.is_biased = params.is_biased === 'true';
-      } else {
-        delete params.is_biased;
-      }
-      if (!params.source) delete params.source;
-      if (!params.category) delete params.category;
+      const results = await Promise.all(
+        CATEGORIES.map(async (cat) => {
+          try {
+            const response = await api.getArticles({ category: cat.key, limit: 6, skip: 0 });
+            return { key: cat.key, articles: response.articles, total: response.total };
+          } catch {
+            return { key: cat.key, articles: [], total: 0 };
+          }
+        })
+      );
 
-      const response = await api.getArticles(params);
-      setArticles(response.articles);
-      setTotal(response.total);
+      const data: Record<string, CategoryData> = {};
+      results.forEach((r) => {
+        data[r.key] = { articles: r.articles, total: r.total, loading: false };
+      });
+      setCategoryData(data);
     } catch (error) {
-      console.error('Failed to fetch articles:', error);
+      console.error('Failed to fetch categories:', error);
     } finally {
-      setLoading(false);
+      setInitialLoading(false);
     }
-  };
-
-  const handleFilterChange = (key: string, value: any) => {
-    setFilters((prev) => ({ ...prev, [key]: value, skip: 0 }));
-  };
-
-  const handlePageChange = (direction: 'next' | 'prev') => {
-    setFilters((prev) => ({
-      ...prev,
-      skip: direction === 'next' ? prev.skip + prev.limit : Math.max(0, prev.skip - prev.limit),
-    }));
   };
 
   const formatDate = (dateStr: string | null) => {
     if (!dateStr) return 'N/A';
     try {
-      const date = new Date(dateStr);
-      if (isNaN(date.getTime())) return 'N/A';
-      return date.toLocaleDateString('en-US', {
-        year: 'numeric',
-        month: 'short',
-        day: 'numeric',
-      });
+      const d = new Date(dateStr);
+      if (isNaN(d.getTime())) return 'N/A';
+      return d.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
     } catch {
       return 'N/A';
     }
   };
 
   const handleBiasCheck = async (articleId: number, e: React.MouseEvent) => {
-    e.preventDefault(); // Prevent navigation
+    e.preventDefault();
     e.stopPropagation();
-    
     if (processingIds.has(articleId)) return;
 
-    setProcessingIds(prev => new Set(prev).add(articleId));
-    
+    setProcessingIds((prev) => new Set(prev).add(articleId));
     try {
       const updatedArticle = await api.processArticle(articleId);
-      
-      // Update the article in the list
-      setArticles(prevArticles =>
-        prevArticles.map(article =>
-          article.id === articleId ? updatedArticle : article
-        )
-      );
+      setCategoryData((prev) => {
+        const updated = { ...prev };
+        for (const key of Object.keys(updated)) {
+          updated[key] = {
+            ...updated[key],
+            articles: updated[key].articles.map((a) =>
+              a.id === articleId ? updatedArticle : a
+            ),
+          };
+        }
+        return updated;
+      });
     } catch (error) {
       console.error('Failed to process article:', error);
       alert('Failed to analyze article. Please try again.');
     } finally {
-      setProcessingIds(prev => {
-        const newSet = new Set(prev);
-        newSet.delete(articleId);
-        return newSet;
+      setProcessingIds((prev) => {
+        const s = new Set(prev);
+        s.delete(articleId);
+        return s;
       });
     }
   };
@@ -102,213 +99,188 @@ const ArticlesPage = () => {
     return 'text-green-400 bg-green-500/10 border-green-500/30';
   };
 
+  const totalArticles = Object.values(categoryData).reduce((sum, d) => sum + d.total, 0);
+
   return (
     <div className="min-h-screen py-8 px-4">
       <div className="max-w-7xl mx-auto">
         {/* Header */}
-        <div className="mb-8">
-            <h1 className="text-4xl font-bold mb-2">
+        <div className="mb-10">
+          <h1 className="text-4xl font-bold mb-2">
             <span className="text-white">📰 </span>
             <span className="bg-gradient-to-r from-primary-400 to-emerald-400 bg-clip-text text-transparent">
               Articles Database
             </span>
-            </h1>
-          <p className="text-gray-400">Browse and analyze scraped articles</p>
+          </h1>
+          <p className="text-gray-400">
+            Browse articles by category • {totalArticles} total articles
+          </p>
         </div>
 
-        {/* Filters */}
-        <div className="bg-gray-900/50 backdrop-blur-sm rounded-xl border border-gray-800 p-6 mb-6">
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-300 mb-2">
-                Newspaper Source
-              </label>
-              <select
-                value={filters.source}
-                onChange={(e) => handleFilterChange('source', e.target.value)}
-                className="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-2 text-white focus:ring-2 focus:ring-primary-500 focus:border-transparent"
-              >
-                <option value="">All Sources</option>
-                <option value="prothom_alo">প্রথম আলো</option>
-                <option value="daily_star">Daily Star</option>
-                <option value="jugantor">যুগান্তর</option>
-                <option value="samakal">সমকাল</option>
-              </select>
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-300 mb-2">
-                Category
-              </label>
-              <select
-                value={filters.category}
-                onChange={(e) => handleFilterChange('category', e.target.value)}
-                className="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-2 text-white focus:ring-2 focus:ring-primary-500 focus:border-transparent"
-              >
-                <option value="">All Categories</option>
-                <option value="রাজনীতি">রাজনীতি</option>
-                <option value="বিশ্ব">বিশ্ব</option>
-                <option value="মতামত">মতামত</option>
-                <option value="বাংলাদেশ">বাংলাদেশ</option>
-              </select>
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-300 mb-2">
-                Bias Status
-              </label>
-              <select
-                value={filters.is_biased}
-                onChange={(e) => handleFilterChange('is_biased', e.target.value)}
-                className="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-2 text-white focus:ring-2 focus:ring-primary-500 focus:border-transparent"
-              >
-                <option value="">All Articles</option>
-                <option value="true">Biased Only</option>
-                <option value="false">Unbiased Only</option>
-              </select>
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-300 mb-2">
-                Items per Page
-              </label>
-              <select
-                value={filters.limit}
-                onChange={(e) => handleFilterChange('limit', parseInt(e.target.value))}
-                className="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-2 text-white focus:ring-2 focus:ring-primary-500 focus:border-transparent"
-              >
-                <option value="12">12</option>
-                <option value="24">24</option>
-                <option value="48">48</option>
-              </select>
-            </div>
+        {/* Quick Stats */}
+        {!initialLoading && (
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-10">
+            {CATEGORIES.map((cat) => {
+              const data = categoryData[cat.key];
+              return (
+                <Link
+                  key={cat.key}
+                  to={`/articles/category/${encodeURIComponent(cat.key)}`}
+                  className="bg-gray-900/50 backdrop-blur-sm rounded-xl border border-gray-800 p-4 hover:border-primary-500/50 transition-all hover:shadow-lg group"
+                >
+                  <div className="flex items-center gap-3">
+                    <div className={`w-10 h-10 rounded-lg bg-gradient-to-br ${cat.color} flex items-center justify-center text-lg`}>
+                      {cat.icon}
+                    </div>
+                    <div>
+                      <p className="text-white font-semibold group-hover:text-primary-400 transition-colors">
+                        {cat.label}
+                      </p>
+                      <p className="text-gray-500 text-xs">
+                        {data?.total || 0} articles
+                      </p>
+                    </div>
+                  </div>
+                </Link>
+              );
+            })}
           </div>
-        </div>
-
-        {/* Results Count */}
-        <div className="mb-4 text-gray-400">
-          Showing {filters.skip + 1}-{Math.min(filters.skip + filters.limit, total)} of {total} articles
-        </div>
+        )}
 
         {/* Loading State */}
-        {loading && (
+        {initialLoading && (
           <div className="flex justify-center items-center h-64">
             <div className="animate-spin rounded-full h-16 w-16 border-t-2 border-b-2 border-primary-500"></div>
           </div>
         )}
 
-        {/* Articles Grid */}
-        {!loading && articles.length > 0 && (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
-            {articles.map((article) => (
-              <Link
-                key={article.id}
-                to={`/article/${article.id}`}
-                className="bg-gray-900/50 backdrop-blur-sm rounded-xl border border-gray-800 p-6 hover:border-primary-500/50 transition-all hover:shadow-lg hover:shadow-primary-500/10 group"
-              >
-                {/* Header */}
-                <div className="flex items-start justify-between mb-3">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <span className="px-3 py-1 rounded-full text-xs font-medium bg-gray-800 text-gray-300">
-                      {article.source.replace('_', ' ')}
-                    </span>
-                    {article.category && (
-                      <span className="px-3 py-1 rounded-full text-xs font-medium bg-primary-500/10 text-primary-400 border border-primary-500/30">
-                        {article.category}
-                      </span>
-                    )}
-                  </div>
-                  {article.is_biased && (
-                    <span
-                      className={`px-3 py-1 rounded-full text-xs font-bold border ${getBiasColor(
-                        article.bias_score
-                      )}`}
+        {/* Category Sections */}
+        {!initialLoading &&
+          CATEGORIES.map((cat) => {
+            const data = categoryData[cat.key];
+            if (!data || data.articles.length === 0) return null;
+
+            return (
+              <section key={cat.key} className="mb-12">
+                {/* Category Header */}
+                <div className="flex items-center justify-between mb-6">
+                  <div className="flex items-center gap-3">
+                    <div
+                      className={`w-10 h-10 rounded-lg bg-gradient-to-br ${cat.color} flex items-center justify-center text-lg shadow-lg`}
                     >
-                      {article.bias_score.toFixed(0)}%
-                    </span>
-                  )}
-                </div>
-
-                {/* Title */}
-                <h3 className="text-lg font-semibold text-white mb-2 line-clamp-2 group-hover:text-primary-400 transition-colors">
-                  {article.title || 'Untitled'}
-                </h3>
-
-                {/* Content Preview */}
-                <p className="text-sm text-gray-400 mb-4 line-clamp-3">
-                  {article.original_content}
-                </p>
-
-                {/* Stats */}
-                <div className="flex items-center justify-between text-xs text-gray-500">
-                  <span>📅 {formatDate(article.scraped_at)}</span>
-                  {article.total_changes > 0 && (
-                    <span className="text-yellow-400">✏️ {article.total_changes} changes</span>
-                  )}
-                </div>
-
-                {/* Status Badge or Action Button */}
-                {!article.processed ? (
-                  <button
-                    onClick={(e) => handleBiasCheck(article.id, e)}
-                    disabled={processingIds.has(article.id)}
-                    className="mt-3 w-full px-4 py-2 bg-primary-500 hover:bg-primary-600 disabled:bg-gray-600 disabled:cursor-not-allowed text-white rounded-lg text-sm font-medium transition-colors flex items-center justify-center space-x-2"
-                  >
-                    {processingIds.has(article.id) ? (
-                      <>
-                        <div className="animate-spin rounded-full h-4 w-4 border-t-2 border-b-2 border-white"></div>
-                        <span>Analyzing...</span>
-                      </>
-                    ) : (
-                      <>
-                        <span>🔍</span>
-                        <span>Check for Bias</span>
-                      </>
-                    )}
-                  </button>
-                ) : article.is_biased ? (
-                  <div className="mt-3 px-3 py-1 bg-red-500/10 border border-red-500/30 rounded-lg text-xs text-red-400 text-center">
-                    ⚠️ Bias Detected ({article.bias_score.toFixed(0)}%)
+                      {cat.icon}
+                    </div>
+                    <div>
+                      <h2 className="text-2xl font-bold text-white">{cat.label}</h2>
+                      <p className="text-gray-500 text-sm">{cat.sublabel} • {data.total} articles</p>
+                    </div>
                   </div>
-                ) : (
-                  <div className="mt-3 px-3 py-1 bg-green-500/10 border border-green-500/30 rounded-lg text-xs text-green-400 text-center">
-                    ✅ No Bias Detected
+                  {data.total > 6 && (
+                    <Link
+                      to={`/articles/category/${encodeURIComponent(cat.key)}`}
+                      className="flex items-center gap-1 px-4 py-2 bg-gray-800 hover:bg-gray-700 text-primary-400 hover:text-primary-300 rounded-lg text-sm font-medium transition-all group"
+                    >
+                      <span>See More</span>
+                      <span className="group-hover:translate-x-1 transition-transform">»</span>
+                    </Link>
+                  )}
+                </div>
+
+                {/* Articles Grid — 6 cards */}
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+                  {data.articles.slice(0, 6).map((article) => (
+                    <Link
+                      key={article.id}
+                      to={`/article/${article.id}`}
+                      className="bg-gray-900/50 backdrop-blur-sm rounded-xl border border-gray-800 p-5 hover:border-primary-500/50 transition-all hover:shadow-lg hover:shadow-primary-500/10 group"
+                    >
+                      {/* Header */}
+                      <div className="flex items-start justify-between mb-3">
+                        <span className="px-3 py-1 rounded-full text-xs font-medium bg-gray-800 text-gray-300">
+                          {article.source.replace('_', ' ')}
+                        </span>
+                        {article.is_biased && (
+                          <span
+                            className={`px-3 py-1 rounded-full text-xs font-bold border ${getBiasColor(
+                              article.bias_score
+                            )}`}
+                          >
+                            {article.bias_score.toFixed(0)}%
+                          </span>
+                        )}
+                      </div>
+
+                      {/* Title */}
+                      <h3 className="text-base font-semibold text-white mb-2 line-clamp-2 group-hover:text-primary-400 transition-colors">
+                        {article.title || 'Untitled'}
+                      </h3>
+
+                      {/* Content Preview */}
+                      <p className="text-sm text-gray-400 mb-3 line-clamp-2">
+                        {article.original_content}
+                      </p>
+
+                      {/* Footer */}
+                      <div className="flex items-center justify-between text-xs text-gray-500">
+                        <span>📅 {formatDate(article.scraped_at)}</span>
+                        {article.total_changes > 0 && (
+                          <span className="text-yellow-400">✏️ {article.total_changes}</span>
+                        )}
+                      </div>
+
+                      {/* Status */}
+                      {!article.processed ? (
+                        <button
+                          onClick={(e) => handleBiasCheck(article.id, e)}
+                          disabled={processingIds.has(article.id)}
+                          className="mt-3 w-full px-3 py-1.5 bg-primary-500 hover:bg-primary-600 disabled:bg-gray-600 disabled:cursor-not-allowed text-white rounded-lg text-xs font-medium transition-colors flex items-center justify-center space-x-2"
+                        >
+                          {processingIds.has(article.id) ? (
+                            <>
+                              <div className="animate-spin rounded-full h-3 w-3 border-t-2 border-b-2 border-white"></div>
+                              <span>Analyzing...</span>
+                            </>
+                          ) : (
+                            <>
+                              <span>🔍</span>
+                              <span>Check for Bias</span>
+                            </>
+                          )}
+                        </button>
+                      ) : article.is_biased ? (
+                        <div className="mt-3 px-3 py-1 bg-red-500/10 border border-red-500/30 rounded-lg text-xs text-red-400 text-center">
+                          ⚠️ Bias Detected ({article.bias_score.toFixed(0)}%)
+                        </div>
+                      ) : (
+                        <div className="mt-3 px-3 py-1 bg-green-500/10 border border-green-500/30 rounded-lg text-xs text-green-400 text-center">
+                          ✅ No Bias Detected
+                        </div>
+                      )}
+                    </Link>
+                  ))}
+                </div>
+
+                {/* See More link at bottom for mobile */}
+                {data.total > 6 && (
+                  <div className="mt-4 text-center md:hidden">
+                    <Link
+                      to={`/articles/category/${encodeURIComponent(cat.key)}`}
+                      className="inline-flex items-center gap-1 text-primary-400 hover:text-primary-300 text-sm font-medium"
+                    >
+                      See all {data.total} articles »
+                    </Link>
                   </div>
                 )}
-              </Link>
-            ))}
-          </div>
-        )}
+              </section>
+            );
+          })}
 
         {/* Empty State */}
-        {!loading && articles.length === 0 && (
+        {!initialLoading && totalArticles === 0 && (
           <div className="text-center py-16">
             <div className="text-6xl mb-4">📭</div>
             <h3 className="text-2xl font-bold text-gray-300 mb-2">No Articles Found</h3>
-            <p className="text-gray-500">Try adjusting your filters or scrape some articles</p>
-          </div>
-        )}
-
-        {/* Pagination */}
-        {!loading && articles.length > 0 && (
-          <div className="flex justify-center items-center space-x-4">
-            <button
-              onClick={() => handlePageChange('prev')}
-              disabled={filters.skip === 0}
-              className="px-6 py-2 bg-gray-800 text-white rounded-lg disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-700 transition-colors"
-            >
-              ← Previous
-            </button>
-            <span className="text-gray-400">
-              Page {Math.floor(filters.skip / filters.limit) + 1}
-            </span>
-            <button
-              onClick={() => handlePageChange('next')}
-              disabled={filters.skip + filters.limit >= total}
-              className="px-6 py-2 bg-gray-800 text-white rounded-lg disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-700 transition-colors"
-            >
-              Next →
-            </button>
+            <p className="text-gray-500">Scrape some articles to get started</p>
           </div>
         )}
       </div>

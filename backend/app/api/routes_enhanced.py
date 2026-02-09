@@ -260,7 +260,7 @@ async def get_articles(
     skip: int = Query(0, ge=0),
     limit: int = Query(10, ge=1, le=100),
     processed: Optional[bool] = Query(None, description="Filter by processing status"),
-    biased: Optional[bool] = Query(None, description="Filter by bias status"),
+    biased: Optional[bool] = Query(None, alias="is_biased", description="Filter by bias status"),
     source: Optional[str] = Query(None, description="Filter by news source"),
     category: Optional[str] = Query(None, description="Filter by category (রাজনীতি, বিশ্ব, মতামত, বাংলাদেশ)")
 ):

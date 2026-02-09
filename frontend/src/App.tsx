@@ -4,6 +4,7 @@ import Navbar from './components/Navbar';
 import ProtectedRoute from './components/ProtectedRoute';
 import HomePage from './pages/HomePage';
 import ArticlesPage from './pages/ArticlesPage';
+import CategoryArticlesPage from './pages/CategoryArticlesPage';
 import ArticleDetailPage from './pages/ArticleDetailPage';
 import DashboardPage from './pages/DashboardPage';
 import ManualScrapingPage from './pages/ManualScrapingPage';
@@ -21,6 +22,7 @@ function App() {
             {/* Public Routes */}
             <Route path="/" element={<HomePage />} />
             <Route path="/articles" element={<ArticlesPage />} />
+            <Route path="/articles/category/:categoryName" element={<CategoryArticlesPage />} />
             <Route path="/article/:id" element={<ArticleDetailPage />} />
             <Route path="/login" element={<LoginPage />} />
             <Route path="/signup" element={<SignupPage />} />

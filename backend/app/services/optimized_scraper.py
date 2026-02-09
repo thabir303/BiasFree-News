@@ -594,6 +594,8 @@ class OptimizedJugantorScraper(OptimizedNewspaperScraper):
             # Content extraction
             content_parts = []
             content_selectors = [
+                'div.desktopDetailBody',
+                'div.detailBody',
                 'div.news-element-text',
                 'div.news-element',
                 'div.content',
@@ -637,9 +639,25 @@ class OptimizedJugantorScraper(OptimizedNewspaperScraper):
             
             # Try to extract date
             published_date = None
-            date_tag = soup.find('time')
-            if date_tag:
-                published_date = date_tag.get('datetime')
+            
+            # 1. Try JSON-LD (most reliable for Jugantor)
+            import json as _json
+            for script in soup.find_all('script', type='application/ld+json'):
+                try:
+                    ld_data = _json.loads(script.string)
+                    if isinstance(ld_data, dict) and 'datePublished' in ld_data:
+                        published_date = ld_data['datePublished']
+                        break
+                except Exception:
+                    pass
+            
+            # 2. Fallback to time tag
+            if not published_date:
+                date_tag = soup.find('time')
+                if date_tag:
+                    published_date = date_tag.get('datetime')
+            
+            # 3. Fallback to meta tag
             if not published_date:
                 meta_date = soup.find('meta', property='article:published_time')
                 if meta_date:
@@ -651,7 +669,7 @@ class OptimizedJugantorScraper(OptimizedNewspaperScraper):
                     if not self.is_within_date_range(article_date):
                         return None
                     published_date = article_date.strftime('%Y-%m-%d')
-                except:
+                except Exception:
                     published_date = datetime.now().strftime('%Y-%m-%d')
             else:
                 published_date = datetime.now().strftime('%Y-%m-%d')
