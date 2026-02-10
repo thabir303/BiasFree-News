@@ -14,6 +14,12 @@ const CategoryArticlesPage = () => {
   const navigate = useNavigate();
   const decodedCategory = categoryName ? decodeURIComponent(categoryName) : '';
 
+  // Split stored label into icon and text so we can color only the text
+  const rawLabel = CATEGORY_LABELS[decodedCategory] || decodedCategory;
+  const firstSpaceIdx = rawLabel.indexOf(' ');
+  const headerIcon = firstSpaceIdx > -1 ? rawLabel.slice(0, firstSpaceIdx) : '';
+  const headerText = firstSpaceIdx > -1 ? rawLabel.slice(firstSpaceIdx + 1) : rawLabel;
+
   const [articles, setArticles] = useState<Article[]>([]);
   const [loading, setLoading] = useState(true);
   const [processingIds, setProcessingIds] = useState<Set<number>>(new Set());
@@ -115,11 +121,16 @@ const CategoryArticlesPage = () => {
             className="flex items-center gap-2 text-gray-400 hover:text-primary-400 transition-colors mb-4 group"
           >
             <span className="group-hover:-translate-x-1 transition-transform">←</span>
-            <span>Back to All Categories</span>
+            <span >Back to All Categories</span>
           </button>
           <h1 className="text-4xl font-bold mb-2">
-            <span className="bg-gradient-to-r from-primary-400 to-emerald-400 bg-clip-text text-transparent">
-              {CATEGORY_LABELS[decodedCategory] || decodedCategory}
+            <span className="inline-flex items-center gap-3">
+              {headerIcon && (
+                <span className="text-white text-2xl">{headerIcon}</span>
+              )}
+              <span className="bg-gradient-to-r from-primary-400 to-emerald-400 bg-clip-text text-transparent">
+                {headerText}
+              </span>
             </span>
           </h1>
           <p className="text-gray-400">
