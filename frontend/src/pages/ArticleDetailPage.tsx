@@ -185,16 +185,33 @@ const ArticleDetailPage = () => {
   }
 
   return (
-    <div className="min-h-screen py-8 px-4">
+    <div className="min-h-screen py-10 px-4 sm:px-6 lg:px-8">
       <div className="max-w-7xl mx-auto">
-        {/* Back Button */}
-        <Link
-          to="/articles"
-          className="inline-flex items-center space-x-2 text-gray-400 hover:text-white mb-6 transition-colors"
-        >
-          <span>←</span>
-          <span>Back to Articles</span>
-        </Link>
+        {/* Breadcrumb Navigation */}
+        <nav className="flex items-center gap-1.5 text-xs text-gray-500 mb-8">
+          <Link to="/articles" className="hover:text-primary-400 transition-colors">
+            Articles
+          </Link>
+          <svg className="w-3 h-3 text-gray-700" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+          </svg>
+          {article.category && (
+            <>
+              <Link 
+                to={`/articles/category/${encodeURIComponent(article.category)}`}
+                className="hover:text-primary-400 transition-colors"
+              >
+                {article.category}
+              </Link>
+              <svg className="w-3 h-3 text-gray-700" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+              </svg>
+            </>
+          )}
+          <span className="text-gray-400 font-medium truncate max-w-xs">
+            {article.title || 'Untitled Article'}
+          </span>
+        </nav>
 
         {/* Article Header */}
         <div className="bg-gray-900/50 backdrop-blur-sm rounded-xl border border-gray-800 p-6 mb-6">
@@ -206,8 +223,8 @@ const ArticleDetailPage = () => {
                   📰 {article.source.replace('_', ' ')}
                 </span>
                 {article.category && (
-                  <span className="px-3 py-1 bg-primary-500/10 text-primary-400 border border-primary-500/30 rounded-full">
-                    📂 {article.category}
+                  <span className="px-2 py-1 bg-primary-500/10 text-primary-400 border border-primary-500/30 rounded-md text-xs">
+                    {article.category}
                   </span>
                 )}
                 <span className="px-3 py-1 bg-gray-800 rounded-full">
@@ -323,7 +340,7 @@ const ArticleDetailPage = () => {
             </h2>
             <div className="prose prose-invert max-w-none">
               <p className="text-gray-300 leading-relaxed whitespace-pre-wrap">
-                {article.original_content || article.content || 'No content available'}
+                {article.original_content || 'No content available'}
               </p>
             </div>
           </div>
@@ -347,7 +364,7 @@ const ArticleDetailPage = () => {
               </div>
               <div className="prose prose-invert max-w-none">
                 <p className="text-gray-300 leading-relaxed whitespace-pre-wrap">
-                  {highlightText(article.original_content || article.content || '', article.biased_terms, 'biased')}
+                  {highlightText(article.original_content || '', article.biased_terms, 'biased')}
                 </p>
               </div>
             </div>
