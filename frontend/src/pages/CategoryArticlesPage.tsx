@@ -1,7 +1,9 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Link, useParams, useNavigate } from 'react-router-dom';
 import { api, type Article } from '../services/api';
-import { Funnel } from 'lucide-react';
+import ArticleFilters from '../components/ArticleFilters';
+import ArticlePagination from '../components/ArticlePagination';
+import { useArticleFilters } from '../hooks/useArticleFilters';
 
 const CATEGORY_META: Record<string, { icon: string; text: string; gradient: string }> = {
   'রাজনীতি': { icon: '🏛️', text: 'রাজনীতি (Politics)', gradient: 'from-blue-500 to-indigo-600' },
@@ -49,12 +51,15 @@ const CategoryArticlesPage = () => {
   const [loading, setLoading] = useState(true);
   const [processingIds, setProcessingIds] = useState<Set<number>>(new Set());
   const [total, setTotal] = useState(0);
-  const [filters, setFilters] = useState({
-    source: '',
-    is_biased: '',
-    skip: 0,
-    limit: 12,
-  });
+  
+  const {
+    filters,
+    handleFilterChange,
+    handleClearAll,
+    handlePageChange,
+    getCurrentPage,
+    getTotalPages,
+  } = useArticleFilters();
 
   const fetchArticles = useCallback(async () => {
     if (!decodedCategory) return;
@@ -83,15 +88,13 @@ const CategoryArticlesPage = () => {
     fetchArticles();
   }, [fetchArticles]);
 
-  const handleFilterChange = (key: string, value: any) => {
-    setFilters((prev) => ({ ...prev, [key]: value, skip: 0 }));
+  const handlePageChangeWithScroll = (direction: 'next' | 'prev') => {
+    handlePageChange(direction);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
-  const handlePageChange = (direction: 'next' | 'prev') => {
-    setFilters((prev) => ({
-      ...prev,
-      skip: direction === 'next' ? prev.skip + prev.limit : Math.max(0, prev.skip - prev.limit),
-    }));
+  const handleDirectPageChange = (page: number) => {
+    handleFilterChange('skip', (page - 1) * filters.limit);
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
@@ -132,23 +135,8 @@ const CategoryArticlesPage = () => {
     return { color: 'text-emerald-400', bg: 'bg-emerald-500/10', border: 'border-emerald-500/30' };
   };
 
-  const totalPages = Math.ceil(total / filters.limit);
-  const currentPage = Math.floor(filters.skip / filters.limit) + 1;
-
-  /* ── Build page number array with ellipsis ─── */
-  const getPageNumbers = (): (number | '...')[] => {
-    if (totalPages <= 7) return Array.from({ length: totalPages }, (_, i) => i + 1);
-    const pages: (number | '...')[] = [1];
-    const left = Math.max(2, currentPage - 1);
-    const right = Math.min(totalPages - 1, currentPage + 1);
-    if (left > 2) pages.push('...');
-    for (let i = left; i <= right; i++) pages.push(i);
-    if (right < totalPages - 1) pages.push('...');
-    pages.push(totalPages);
-    return pages;
-  };
-
-  const activeFiltersCount = [filters.source, filters.is_biased].filter(Boolean).length;
+  const totalPages = getTotalPages(total);
+  const currentPage = getCurrentPage();
 
   return (
     <div className="min-h-screen py-10 px-4 sm:px-6 lg:px-8">
@@ -185,73 +173,12 @@ const CategoryArticlesPage = () => {
         </div>
 
         {/* ── Filters ─────────────────────────────── */}
-        <div className="rounded-2xl border border-gray-800/60 bg-gray-900/30 backdrop-blur-sm p-5 sm:p-6 mb-6">
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="text-sm font-medium text-gray-300 flex items-center gap-2">
-              <Funnel />
-              Filters
-              {activeFiltersCount > 0 && (
-                <span className="px-1.5 py-0.5 text-[10px] font-semibold rounded-full bg-primary-500/20 text-primary-400">
-                  {activeFiltersCount}
-                </span>
-              )}
-            </h3>
-            {activeFiltersCount > 0 && (
-              <button
-                onClick={() => setFilters({ source: '', is_biased: '', skip: 0, limit: filters.limit })}
-                className="text-xs text-gray-500 hover:text-gray-300 transition-colors"
-              >
-                Clear all
-              </button>
-            )}
-          </div>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            <div>
-              <label className="block text-[11px] font-medium text-gray-500 uppercase tracking-wider mb-1.5">
-                Source
-              </label>
-              <select
-                value={filters.source}
-                onChange={(e) => handleFilterChange('source', e.target.value)}
-                className="w-full bg-gray-800/60 border border-gray-700/50 rounded-xl px-3.5 py-2.5 text-sm text-white focus:ring-2 focus:ring-primary-500/40 focus:border-primary-500/40 transition-all appearance-none cursor-pointer"
-              >
-                <option value="">All Sources</option>
-                <option value="prothom_alo">প্রথম আলো</option>
-                <option value="daily_star">Daily Star</option>
-                <option value="jugantor">যুগান্তর</option>
-                <option value="samakal">সমকাল</option>
-              </select>
-            </div>
-            <div>
-              <label className="block text-[11px] font-medium text-gray-500 uppercase tracking-wider mb-1.5">
-                Bias Status
-              </label>
-              <select
-                value={filters.is_biased}
-                onChange={(e) => handleFilterChange('is_biased', e.target.value)}
-                className="w-full bg-gray-800/60 border border-gray-700/50 rounded-xl px-3.5 py-2.5 text-sm text-white focus:ring-2 focus:ring-primary-500/40 focus:border-primary-500/40 transition-all appearance-none cursor-pointer"
-              >
-                <option value="">All Articles</option>
-                <option value="true">Biased Only</option>
-                <option value="false">Unbiased Only</option>
-              </select>
-            </div>
-            <div>
-              <label className="block text-[11px] font-medium text-gray-500 uppercase tracking-wider mb-1.5">
-                Per Page
-              </label>
-              <select
-                value={filters.limit}
-                onChange={(e) => handleFilterChange('limit', parseInt(e.target.value))}
-                className="w-full bg-gray-800/60 border border-gray-700/50 rounded-xl px-3.5 py-2.5 text-sm text-white focus:ring-2 focus:ring-primary-500/40 focus:border-primary-500/40 transition-all appearance-none cursor-pointer"
-              >
-                <option value="12">12</option>
-                <option value="24">24</option>
-                <option value="48">48</option>
-              </select>
-            </div>
-          </div>
-        </div>
+        <ArticleFilters
+          filters={filters}
+          onFilterChange={handleFilterChange}
+          onClearAll={handleClearAll}
+          loading={loading}
+        />
 
         {/* ── Results Info Bar ─────────────────────── */}
         {!loading && total > 0 && (
@@ -363,9 +290,9 @@ const CategoryArticlesPage = () => {
             <p className="text-sm text-gray-500 max-w-sm">
               Try adjusting your filters or scrape more articles to populate this category.
             </p>
-            {activeFiltersCount > 0 && (
+            {[filters.source, filters.is_biased].filter(Boolean).length > 0 && (
               <button
-                onClick={() => setFilters({ source: '', is_biased: '', skip: 0, limit: filters.limit })}
+                onClick={handleClearAll}
                 className="mt-4 text-sm text-primary-400 hover:text-primary-300 transition-colors"
               >
                 Clear all filters
@@ -375,50 +302,14 @@ const CategoryArticlesPage = () => {
         )}
 
         {/* ── Pagination ───────────────────────────── */}
-        {!loading && totalPages > 1 && (
-          <div className="flex items-center justify-center gap-1.5 pt-2 pb-4">
-            {/* Prev */}
-            <button
-              onClick={() => handlePageChange('prev')}
-              disabled={currentPage === 1}
-              className="inline-flex items-center gap-1 px-3.5 py-2 rounded-xl text-xs font-medium border border-gray-800/60 text-gray-400 hover:text-white hover:border-gray-700 hover:bg-gray-800/40 disabled:opacity-30 disabled:cursor-not-allowed transition-all"
-            >
-              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
-              Prev
-            </button>
-
-            {/* Page numbers */}
-            {getPageNumbers().map((p, i) =>
-              p === '...' ? (
-                <span key={`ellipsis-${i}`} className="w-9 h-9 flex items-center justify-center text-xs text-gray-600">
-                  ···
-                </span>
-              ) : (
-                <button
-                  key={p}
-                  onClick={() => setFilters((prev) => ({ ...prev, skip: ((p as number) - 1) * prev.limit }))}
-                  className={`w-9 h-9 rounded-xl text-xs font-medium transition-all ${
-                    p === currentPage
-                      ? 'bg-primary-500 text-white shadow-md shadow-primary-500/20'
-                      : 'text-gray-400 hover:text-white hover:bg-gray-800/60'
-                  }`}
-                >
-                  {p}
-                </button>
-              )
-            )}
-
-            {/* Next */}
-            <button
-              onClick={() => handlePageChange('next')}
-              disabled={currentPage === totalPages}
-              className="inline-flex items-center gap-1 px-3.5 py-2 rounded-xl text-xs font-medium border border-gray-800/60 text-gray-400 hover:text-white hover:border-gray-700 hover:bg-gray-800/40 disabled:opacity-30 disabled:cursor-not-allowed transition-all"
-            >
-              Next
-              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
-            </button>
-          </div>
-        )}
+        <ArticlePagination
+          total={total}
+          currentPage={currentPage}
+          totalPages={totalPages}
+          onPageChange={handleDirectPageChange}
+          onPrevNext={handlePageChangeWithScroll}
+          loading={loading}
+        />
       </div>
     </div>
   );
