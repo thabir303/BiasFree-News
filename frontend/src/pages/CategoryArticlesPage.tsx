@@ -57,6 +57,7 @@ const CategoryArticlesPage = () => {
     handleFilterChange,
     handleClearAll,
     handlePageChange,
+    handleDirectPageChange,
     getCurrentPage,
     getTotalPages,
   } = useArticleFilters();
@@ -93,8 +94,8 @@ const CategoryArticlesPage = () => {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
-  const handleDirectPageChange = (page: number) => {
-    handleFilterChange('skip', (page - 1) * filters.limit);
+  const handleDirectPageChangeWithScroll = (page: number) => {
+    handleDirectPageChange(page);
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
@@ -306,7 +307,7 @@ const CategoryArticlesPage = () => {
           total={total}
           currentPage={currentPage}
           totalPages={totalPages}
-          onPageChange={handleDirectPageChange}
+          onPageChange={handleDirectPageChangeWithScroll}
           onPrevNext={handlePageChangeWithScroll}
           loading={loading}
         />

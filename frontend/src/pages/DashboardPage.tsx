@@ -90,7 +90,7 @@ const DashboardPage = () => {
               <span className="text-sm text-red-400 font-semibold">BIASED</span>
             </div>
             <div className="text-4xl font-bold text-white mb-1">{statistics?.biased_count || 0}</div>
-            <div className="text-sm text-gray-400">{biasedPercentage}% of Total</div>
+            <div className="text-sm text-gray-400">{biasedPercentage}% of Total </div>
           </div>
 
           <div className="bg-gradient-to-br from-green-500/10 to-green-600/10 border border-green-500/30 rounded-xl p-6">

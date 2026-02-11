@@ -16,7 +16,11 @@ export const useArticleFilters = (initialLimit: number = 12) => {
   });
 
   const handleFilterChange = useCallback((key: string, value: any) => {
-    setFilters((prev) => ({ ...prev, [key]: value, skip: 0 }));
+    if (key === 'skip') {
+      setFilters((prev) => ({ ...prev, [key]: value }));
+    } else {
+      setFilters((prev) => ({ ...prev, [key]: value, skip: 0 }));
+    }
   }, []);
 
   const handleClearAll = useCallback(() => {
@@ -28,6 +32,10 @@ export const useArticleFilters = (initialLimit: number = 12) => {
       ...prev,
       skip: direction === 'next' ? prev.skip + prev.limit : Math.max(0, prev.skip - prev.limit),
     }));
+  }, []);
+
+  const handleDirectPageChange = useCallback((page: number) => {
+    setFilters((prev) => ({ ...prev, skip: (page - 1) * prev.limit }));
   }, []);
 
   const getActiveFiltersCount = useCallback(() => {
@@ -48,6 +56,7 @@ export const useArticleFilters = (initialLimit: number = 12) => {
     handleFilterChange,
     handleClearAll,
     handlePageChange,
+    handleDirectPageChange,
     getActiveFiltersCount,
     getCurrentPage,
     getTotalPages,
