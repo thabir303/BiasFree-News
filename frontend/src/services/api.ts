@@ -68,6 +68,20 @@ const authClient = axios.create({
     timeout: 30000,
 });
 
+// Request interceptor to add auth token to authClient
+authClient.interceptors.request.use(
+    (config) => {
+        const token = getToken();
+        if (token) {
+            config.headers.Authorization = `Bearer ${token}`;
+        }
+        return config;
+    },
+    (error) => {
+        return Promise.reject(error);
+    }
+);
+
 // ============================================
 // Authentication API
 // ============================================
@@ -112,6 +126,16 @@ export const authApi = {
 
     resendVerification: async (email: string): Promise<{ message: string; verification_token: string }> => {
         const response = await authClient.post<{ message: string; verification_token: string }>(`/resend-verification/${email}`);
+        return response.data;
+    },
+
+    getCategoryPreferences: async (): Promise<{ categories: string[] }> => {
+        const response = await authClient.get<{ categories: string[] }>('/preferences');
+        return response.data;
+    },
+
+    updateCategoryPreferences: async (categories: string[]): Promise<{ categories: string[]; message?: string }> => {
+        const response = await authClient.put<{ categories: string[]; message?: string }>('/preferences', { categories });
         return response.data;
     },
 };

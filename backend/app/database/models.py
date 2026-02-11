@@ -29,6 +29,7 @@ class User(Base):
     is_verified = Column(Boolean, default=False, nullable=False)
     verification_token = Column(String(255), nullable=True)
     token_expires_at = Column(DateTime, nullable=True)
+    category_preferences = Column(JSON, nullable=True)  # Ordered list of category keys e.g. ["রাজনীতি", "বিশ্ব", ...]
     
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)

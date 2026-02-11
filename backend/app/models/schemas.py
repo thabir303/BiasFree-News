@@ -39,9 +39,21 @@ class UserResponse(BaseModel):
     email: str
     role: str
     is_active: bool
+    category_preferences: Optional[List[str]] = None
     
     class Config:
         from_attributes = True
+
+
+class CategoryPreferencesRequest(BaseModel):
+    """Request model for updating category preferences."""
+    categories: List[str] = Field(..., min_length=1, description="Ordered list of category keys by priority")
+
+
+class CategoryPreferencesResponse(BaseModel):
+    """Response model for category preferences."""
+    categories: List[str] = Field(default_factory=list, description="Ordered category keys")
+    message: Optional[str] = None
 
 
 # ============================================

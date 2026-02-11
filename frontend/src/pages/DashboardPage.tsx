@@ -1,57 +1,28 @@
 import { useState, useEffect } from 'react';
-import { api, type Statistics, type SchedulerStatus } from '../services/api';
-import { Clock, Edit2 } from 'lucide-react';
+import { Link } from 'react-router-dom';
+import { api, type Article } from '../services/api';
+import { ChevronRight } from 'lucide-react';
 
 const DashboardPage = () => {
-  const [statistics, setStatistics] = useState<Statistics | null>(null);
-  const [schedulerStatus, setSchedulerStatus] = useState<SchedulerStatus | null>(null);
   const [loading, setLoading] = useState(true);
-  const [editingSchedule, setEditingSchedule] = useState(false);
-  const [newScheduleTime, setNewScheduleTime] = useState('06:00');
-  const [updating, setUpdating] = useState(false);
+  const [analyzedArticles, setAnalyzedArticles] = useState<Article[]>([]);
 
   useEffect(() => {
-    fetchDashboardData();
-    const interval = setInterval(fetchDashboardData, 300000); 
-    return () => clearInterval(interval);
+    fetchAnalyzedArticles();
   }, []);
 
-  const fetchDashboardData = async () => {
+  const fetchAnalyzedArticles = async () => {
     setLoading(true);
     try {
-      const [stats, scheduler] = await Promise.all([
-        api.getStatistics(),
-        api.getSchedulerStatus(),
-      ]);
-      setStatistics(stats);
-      setSchedulerStatus(scheduler);
+      const result = await api.getArticles({ processed: true, limit: 20, skip: 0 });
+      setAnalyzedArticles(result.articles || []);
     } catch (error) {
-      console.error('Failed to fetch dashboard data:', error);
+      console.error('Failed to fetch analyzed articles:', error);
     } finally {
       setLoading(false);
     }
   };
   
-  const handleUpdateSchedule = async () => {
-    try {
-      setUpdating(true);
-      const [hour, minute] = newScheduleTime.split(':').map(Number);
-      
-      await api.updateScheduler(hour, minute);
-      
-      // Refresh dashboard data
-      await fetchDashboardData();
-      
-      setEditingSchedule(false);
-      alert(`Schedule updated to ${newScheduleTime} BDT`);
-    } catch (error: any) {
-      console.error('Failed to update schedule:', error);
-      alert(error.response?.data?.detail || 'Failed to update schedule');
-    } finally {
-      setUpdating(false);
-    }
-  };
-
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -60,242 +31,89 @@ const DashboardPage = () => {
     );
   }
 
-  const biasedPercentage = statistics && statistics.total_articles > 0
-    ? ((statistics.biased_count / statistics.total_articles) * 100).toFixed(1)
-    : '0';
-
   return (
     <div className="min-h-screen py-8 px-4">
       <div className="max-w-7xl mx-auto">
         {/* Header */}
         <div className="mb-8">
           <h1 className="text-4xl font-bold text-white mb-2">📊 Dashboard</h1>
-          <p className="text-gray-400">Real-time statistics and monitoring</p>
+          <p className="text-gray-400">Your analyzed articles history</p>
         </div>
 
-        {/* Statistics Cards */}
-        <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-          <div className="bg-gradient-to-br from-blue-500/10 to-blue-600/10 border border-blue-500/30 rounded-xl p-6">
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-3xl">📰</span>
-              <span className="text-sm text-blue-400 font-semibold">TOTAL</span>
-            </div>
-            <div className="text-4xl font-bold text-white mb-1">{statistics?.total_articles || 0}</div>
-            <div className="text-sm text-gray-400">Articles Collected</div>
-          </div>
-
-          <div className="bg-gradient-to-br from-red-500/10 to-red-600/10 border border-red-500/30 rounded-xl p-6">
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-3xl">⚠️</span>
-              <span className="text-sm text-red-400 font-semibold">BIASED</span>
-            </div>
-            <div className="text-4xl font-bold text-white mb-1">{statistics?.biased_count || 0}</div>
-            <div className="text-sm text-gray-400">{biasedPercentage}% of Total </div>
-          </div>
-
-          <div className="bg-gradient-to-br from-green-500/10 to-green-600/10 border border-green-500/30 rounded-xl p-6">
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-3xl">✅</span>
-              <span className="text-sm text-green-400 font-semibold">NEUTRAL</span>
-            </div>
-            <div className="text-4xl font-bold text-white mb-1">
-              {(statistics?.total_articles || 0) - (statistics?.biased_count || 0)}
-            </div>
-            <div className="text-sm text-gray-400">Unbiased Articles</div>
-          </div>
-
-          <div className="bg-gradient-to-br from-purple-500/10 to-purple-600/10 border border-purple-500/30 rounded-xl p-6">
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-3xl">🔄</span>
-              <span className="text-sm text-purple-400 font-semibold">PROCESSED</span>
-            </div>
-            <div className="text-4xl font-bold text-white mb-1">{statistics?.processed_count || 0}</div>
-            <div className="text-sm text-gray-400">AI Analyzed</div>
-          </div>
-        </div>
-
-        {/* Scheduler Status */}
-        <div className="bg-gray-900/50 backdrop-blur-sm rounded-xl border border-gray-800 p-6 mb-8">
+        {/* Recently Analyzed Articles */}
+        <div className="bg-gray-900/50 backdrop-blur-sm rounded-xl border border-gray-800 p-6">
           <div className="flex items-center justify-between mb-6">
             <h2 className="text-2xl font-bold text-white flex items-center space-x-2">
-              <span>⏰</span>
-              <span>Scheduler Status</span>
+              <span>🔬</span>
+              <span>Recently Analyzed Articles</span>
             </h2>
-            <div
-              className={`px-4 py-2 rounded-full text-sm font-semibold ${
-                schedulerStatus?.running
-                  ? 'bg-green-500/10 text-green-400 border border-green-500/30'
-                  : 'bg-red-500/10 text-red-400 border border-red-500/30'
-              }`}
+            <Link
+              to="/articles"
+              className="inline-flex items-center gap-1 text-xs font-medium text-gray-400 hover:text-primary-400 transition-colors"
             >
-              {schedulerStatus?.running ? '🟢 Running' : '🔴 Stopped'}
-            </div>
+              View All <ChevronRight className="w-3.5 h-3.5" />
+            </Link>
           </div>
 
-          <div className="grid md:grid-cols-2 gap-6">
-            <div className="bg-gray-800/50 rounded-lg p-4 border border-gray-700">
-              <div className="text-sm text-gray-400 mb-1">Next Scheduled Run</div>
-              <div className="text-xl font-semibold text-white">
-                {schedulerStatus?.next_run
-                  ? new Date(schedulerStatus.next_run).toLocaleString('en-US', {
-                      dateStyle: 'medium',
-                      timeStyle: 'short',
-                      timeZone: 'Asia/Dhaka',
-                    }) + ' BDT'
-                  : 'Not Scheduled'}
-              </div>
-              <div className="text-xs text-gray-500 mt-1">
-                {schedulerStatus?.next_run &&
-                  `(${Math.round((new Date(schedulerStatus.next_run).getTime() - Date.now()) / 3600000)} hours from now)`}
-              </div>
+          {analyzedArticles.length === 0 ? (
+            <div className="text-center py-10">
+              <div className="text-4xl mb-3">🔍</div>
+              <p className="text-gray-400 text-sm">No articles analyzed yet. Go to Articles and click "Analyze" on any article.</p>
             </div>
-
-            <div className="bg-gray-800/50 rounded-lg p-4 border border-gray-700">
-              <div className="flex items-center justify-between mb-2">
-                <div className="text-sm text-gray-400">Schedule Configuration</div>
-                <button
-                  onClick={() => setEditingSchedule(!editingSchedule)}
-                  className="p-1.5 hover:bg-gray-700/50 rounded-lg transition-colors"
-                  title="Change schedule"
-                >
-                  <Edit2 className="w-4 h-4 text-gray-400 hover:text-white" />
-                </button>
-              </div>
-              
-              {editingSchedule ? (
-                <div className="space-y-3">
-                  <div className="flex items-center space-x-2">
-                    <Clock className="w-5 h-5 text-blue-400" />
-                    <input
-                      type="time"
-                      value={newScheduleTime}
-                      onChange={(e) => setNewScheduleTime(e.target.value)}
-                      className="bg-gray-700 text-white px-3 py-1.5 rounded-lg border border-gray-600 focus:border-blue-500 focus:outline-none text-sm"
-                    />
-                    <span className="text-sm text-gray-400">BDT</span>
-                  </div>
-                  <div className="flex space-x-2">
-                    <button
-                      onClick={handleUpdateSchedule}
-                      disabled={updating}
-                      className="flex-1 bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded-lg text-sm font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                      {updating ? 'Saving...' : 'Save'}
-                    </button>
-                    <button
-                      onClick={() => setEditingSchedule(false)}
-                      disabled={updating}
-                      className="flex-1 bg-gray-700 hover:bg-gray-600 text-white px-3 py-1.5 rounded-lg text-sm font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                      Cancel
-                    </button>
-                  </div>
-                </div>
-              ) : (
-                <>
-                  <div className="text-xl font-semibold text-white">
-                    {schedulerStatus?.schedule || 'Daily at 6:00 AM BDT'}
-                  </div>
-                  <div className="text-xs text-gray-500 mt-1">Automatic scraping enabled</div>
-                </>
-              )}
-            </div>
-          </div>
-
-          {/* Last Run Information */}
-          {schedulerStatus?.last_run && (
-            <div className="mt-6 bg-gray-800/50 rounded-lg p-4 border border-gray-700">
-              <div className="text-sm text-gray-400 mb-3 font-semibold">Last Scraping Run</div>
-              <div className="grid md:grid-cols-4 gap-4">
-                <div>
-                  <div className="text-xs text-gray-500 mb-1">Status</div>
-                  <div className={`text-sm font-semibold ${
-                    schedulerStatus.last_run.status === 'success' ? 'text-green-400' :
-                    schedulerStatus.last_run.status === 'failed' ? 'text-red-400' :
-                    'text-yellow-400'
-                  }`}>
-                    {schedulerStatus.last_run.status === 'success' ? '✅ Success' :
-                     schedulerStatus.last_run.status === 'failed' ? '❌ Failed' :
-                     '⚠️ Partial'}
-                  </div>
-                </div>
-                <div>
-                  <div className="text-xs text-gray-500 mb-1">Started At</div>
-                  <div className="text-sm text-white">
-                    {schedulerStatus.last_run.started_at
-                      ? new Date(schedulerStatus.last_run.started_at).toLocaleString('en-US', {
-                          dateStyle: 'short',
-                          timeStyle: 'short',
-                        })
-                      : 'N/A'}
-                  </div>
-                </div>
-                <div>
-                  <div className="text-xs text-gray-500 mb-1">Articles Scraped</div>
-                  <div className="text-sm font-semibold text-blue-400">
-                    {schedulerStatus.last_run.articles_scraped || 0}
-                  </div>
-                </div>
-                <div>
-                  <div className="text-xs text-gray-500 mb-1">Duration</div>
-                  <div className="text-sm text-white">
-                    {schedulerStatus.last_run.completed_at && schedulerStatus.last_run.started_at
-                      ? `${Math.round(
-                          (new Date(schedulerStatus.last_run.completed_at).getTime() -
-                           new Date(schedulerStatus.last_run.started_at).getTime()) / 1000
-                        )}s`
-                      : 'N/A'}
-                  </div>
-                </div>
-              </div>
-              {schedulerStatus.last_run.errors && schedulerStatus.last_run.errors.length > 0 && (
-                <div className="mt-3 pt-3 border-t border-gray-700">
-                  <div className="text-xs text-red-400 mb-1">Errors:</div>
-                  <div className="text-xs text-gray-400 space-y-1">
-                    {schedulerStatus.last_run.errors.slice(0, 3).map((err: string, idx: number) => (
-                      <div key={idx}>• {err}</div>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
-        </div>
-
-        {/* Source Distribution */}
-        {statistics && statistics.by_source && (
-          <div className="bg-gray-900/50 backdrop-blur-sm rounded-xl border border-gray-800 p-6">
-            <h2 className="text-2xl font-bold text-white mb-6 flex items-center space-x-2">
-              <span>📊</span>
-              <span>Articles by Source</span>
-            </h2>
-            <div className="space-y-4">
-              {Object.entries(statistics.by_source).map(([source, count]) => {
-                const percentage = ((count / statistics.total_articles) * 100).toFixed(1);
+          ) : (
+            <div className="space-y-3">
+              {analyzedArticles.slice(0, 10).map((article) => {
+                const biasColor = article.is_biased
+                  ? article.bias_score >= 70
+                    ? 'text-red-400 bg-red-500/10 border-red-500/30'
+                    : article.bias_score >= 40
+                    ? 'text-amber-400 bg-amber-500/10 border-amber-500/30'
+                    : 'text-emerald-400 bg-emerald-500/10 border-emerald-500/30'
+                  : 'text-emerald-400 bg-emerald-500/10 border-emerald-500/30';
                 return (
-                  <div key={source} className="bg-gray-800/50 rounded-lg p-4 border border-gray-700">
-                    <div className="flex items-center justify-between mb-2">
-                      <span className="text-white font-semibold capitalize">
-                        {source.replace('_', ' ')}
-                      </span>
-                      <span className="text-gray-400">{count} articles ({percentage}%)</span>
+                  <Link
+                    key={article.id}
+                    to={`/article/${article.id}`}
+                    className="flex items-center gap-4 p-3.5 rounded-xl border border-gray-800/50 bg-gray-800/20 hover:bg-gray-800/40 hover:border-gray-700 transition-all group"
+                  >
+                    {/* Bias indicator */}
+                    <div className={`shrink-0 w-12 h-12 rounded-lg border flex items-center justify-center text-xs font-bold ${biasColor}`}>
+                      {article.is_biased ? `${article.bias_score.toFixed(0)}%` : '✓'}
                     </div>
-                    <div className="w-full bg-gray-700 rounded-full h-3 overflow-hidden">
-                      <div
-                        className="bg-gradient-to-r from-primary-500 to-emerald-500 h-full rounded-full transition-all duration-500"
-                        style={{ width: `${percentage}%` }}
-                      ></div>
+
+                    {/* Content */}
+                    <div className="flex-1 min-w-0">
+                      <h4 className="text-sm font-medium text-gray-200 truncate group-hover:text-white transition-colors">
+                        {article.title || 'Untitled'}
+                      </h4>
+                      <div className="flex items-center gap-2 mt-1">
+                        <span className="text-[11px] text-gray-500 capitalize">{article.source.replace('_', ' ')}</span>
+                        <span className="text-gray-700">·</span>
+                        <span className="text-[11px] text-gray-500">{article.category || 'Uncategorized'}</span>
+                      </div>
                     </div>
-                  </div>
+
+                    {/* Timestamp */}
+                    <div className="shrink-0 text-right">
+                      <p className="text-[11px] text-gray-500">
+                        {article.processed_at
+                          ? new Date(article.processed_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+                          : ''}
+                      </p>
+                      <p className="text-[10px] text-gray-600">
+                        {article.processed_at
+                          ? new Date(article.processed_at).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })
+                          : ''}
+                      </p>
+                    </div>
+
+                    {/* Arrow */}
+                    <ChevronRight className="w-4 h-4 text-gray-600 group-hover:text-gray-400 shrink-0 transition-colors" />
+                  </Link>
                 );
               })}
             </div>
-          </div>
-        )}
-
-        {/* Last Updated */}
-        <div className="mt-6 text-center text-sm text-gray-500">
-          Last updated: {new Date().toLocaleTimeString()}
+          )}
         </div>
       </div>
     </div>

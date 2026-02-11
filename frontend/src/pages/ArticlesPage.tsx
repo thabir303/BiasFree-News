@@ -1,6 +1,9 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Link } from 'react-router-dom';
-import { api, type Article } from '../services/api';
+import { api, authApi, type Article, type Statistics } from '../services/api';
+import { ChevronDown, BarChart3 } from 'lucide-react';
+import { useAuth } from '../contexts/AuthContext';
+import ArticleIcon from '../../public/icons/ArticleIcon' 
 
 const CATEGORIES = [
   { key: 'রাজনীতি', label: 'রাজনীতি', sublabel: 'Politics', icon: '🏛️', gradient: 'from-blue-500 to-indigo-600', accent: 'border-blue-500', bg: 'bg-blue-500/5', ring: 'ring-blue-500/20' },
@@ -57,13 +60,60 @@ const StatSkeleton = () => (
 
 /* ─── Main Component ────────────────────────────────────── */
 const ArticlesPage = () => {
+  const { isAuthenticated } = useAuth();
   const [categoryData, setCategoryData] = useState<Record<string, CategoryData>>({});
   const [processingIds, setProcessingIds] = useState<Set<number>>(new Set());
   const [initialLoading, setInitialLoading] = useState(true);
+  const [statistics, setStatistics] = useState<Statistics | null>(null);
+  const [showGraph, setShowGraph] = useState(false);
+  const [categoryOrder, setCategoryOrder] = useState<string[]>([]);
 
   useEffect(() => {
     fetchAllCategories();
+    fetchStatistics();
+    fetchCategoryOrder();
+  }, [isAuthenticated]);
+
+  const fetchCategoryOrder = async () => {
+    if (!isAuthenticated) {
+      setCategoryOrder(CATEGORIES.map(c => c.key));
+      return;
+    }
+    try {
+      const prefs = await authApi.getCategoryPreferences();
+      if (prefs.categories && prefs.categories.length > 0) {
+        const remaining = CATEGORIES.map(c => c.key).filter(k => !prefs.categories.includes(k));
+        setCategoryOrder([...prefs.categories, ...remaining]);
+      } else {
+        setCategoryOrder(CATEGORIES.map(c => c.key));
+      }
+    } catch {
+      setCategoryOrder(CATEGORIES.map(c => c.key));
+    }
+  };
+
+  const sortedCategories = useMemo(() => {
+    if (categoryOrder.length === 0) return CATEGORIES;
+    return [...CATEGORIES].sort((a, b) => {
+      const idxA = categoryOrder.indexOf(a.key);
+      const idxB = categoryOrder.indexOf(b.key);
+      return (idxA === -1 ? 999 : idxA) - (idxB === -1 ? 999 : idxB);
+    });
+  }, [categoryOrder]);
+
+  useEffect(() => {
+    fetchAllCategories();
+    fetchStatistics();
   }, []);
+
+  const fetchStatistics = async () => {
+    try {
+      const stats = await api.getStatistics();
+      setStatistics(stats);
+    } catch (error) {
+      console.error('Failed to fetch statistics:', error);
+    }
+  };
 
   const fetchAllCategories = async () => {
     setInitialLoading(true);
@@ -227,26 +277,169 @@ const ArticlesPage = () => {
           <div className="absolute -top-8 -left-8 w-64 h-64 bg-primary-500/5 rounded-full blur-3xl pointer-events-none" />
           <div className="relative">
             <div className="flex items-start gap-3 mb-3">
-              <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-primary-500 to-emerald-500 flex items-center justify-center shadow-lg shadow-primary-500/20 mt-1">
-                <svg className="w-6 h-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 20H5a2 2 0 01-2-2V6a2 2 0 012-2h10a2 2 0 012 2v1m2 13a2 2 0 01-2-2V7m2 13a2 2 0 002-2V9a2 2 0 00-2-2h-2m-4-3H9M7 16h6M7 8h6v4H7V8z" /></svg>
+              <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-primary-500 to-emerald-500 flex items-center justify-center shadow-lg shadow-primary-500/20 mt-1">
+                <ArticleIcon />
               </div>
               <div>
-                <h1 className="text-3xl sm:text-4xl font-bold text-white tracking-tight">
+                <h1 className="text-3xl sm:text-3xl font-bold text-white tracking-tight">
                   Articles
                 </h1>
                 <p className="text-sm text-gray-500 mt-0.5">
-                  Total  {initialLoading ? 'Loading…' : `${totalArticles.toLocaleString()} articles, 7${Object.values(categoryData).filter(d => d.total > 0).length} categories`}
+                  Total  {initialLoading ? 'Loading…' : `${totalArticles.toLocaleString()} articles, ${Object.values(categoryData).filter(d => d.total > 0).length} categories`}
                 </p>
               </div>
             </div>
           </div>
         </div>
 
+        {/* ── Statistics Graph (collapsible) ──────── */}
+        {statistics && (
+          <div className="mb-8">
+            <button
+              onClick={() => setShowGraph(!showGraph)}
+              className="w-full flex items-center justify-between px-5 py-4 rounded-2xl border border-gray-800/60 bg-gray-900/40 backdrop-blur-sm hover:bg-gray-900/60 hover:border-gray-700 transition-all duration-300 group"
+            >
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-violet-500 to-fuchsia-500 flex items-center justify-center shadow-md shadow-violet-500/20">
+                  <BarChart3 className="w-5 h-5 text-white" />
+                </div>
+                <div className="text-left">
+                  <h3 className="text-sm font-semibold text-white">সংবাদ পরিসংখ্যান</h3>
+                  <p className="text-[11px] text-gray-500">Article Statistics &amp; Insights</p>
+                </div>
+              </div>
+              <ChevronDown className={`w-5 h-5 text-gray-500 transition-transform duration-300 ${showGraph ? 'rotate-180' : ''}`} />
+            </button>
+
+            <div className={`overflow-hidden transition-all duration-500 ease-in-out ${showGraph ? 'max-h-[800px] opacity-100 mt-4' : 'max-h-0 opacity-0'}`}>
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                {/* ─ Source Distribution Bar Chart ─ */}
+                <div className="rounded-2xl border border-gray-800/60 bg-gray-900/40 backdrop-blur-sm p-6">
+                  <h4 className="text-sm font-semibold text-white mb-1">উৎস ভিত্তিক সংবাদ</h4>
+                  <p className="text-[11px] text-gray-500 mb-5">Articles by Source</p>
+                  <div className="space-y-3.5">
+                    {Object.entries(statistics.by_source)
+                      .sort(([, a], [, b]) => b - a)
+                      .map(([source, count]) => {
+                        const max = Math.max(...Object.values(statistics.by_source), 1);
+                        const pct = (count / max) * 100;
+                        const color = SOURCE_COLORS[source] || 'bg-gray-500';
+                        const label = SOURCE_LABELS[source] || source;
+                        return (
+                          <div key={source}>
+                            <div className="flex items-center justify-between mb-1.5">
+                              <span className="text-xs font-medium text-gray-300">{label}</span>
+                              <span className="text-xs font-bold text-gray-400">{count.toLocaleString()}</span>
+                            </div>
+                            <div className="h-2.5 rounded-full bg-gray-800/80 overflow-hidden">
+                              <div
+                                className={`h-full rounded-full ${color} transition-all duration-700 ease-out`}
+                                style={{ width: `${pct}%` }}
+                              />
+                            </div>
+                          </div>
+                        );
+                      })}
+                  </div>
+                </div>
+
+                {/* ─ Processing Overview ─ */}
+                <div className="rounded-2xl border border-gray-800/60 bg-gray-900/40 backdrop-blur-sm p-6">
+                  <h4 className="text-sm font-semibold text-white mb-1">বিশ্লেষণ অবস্থা</h4>
+                  <p className="text-[11px] text-gray-500 mb-5">Analysis Overview</p>
+
+                  {/* Donut-style summary */}
+                  <div className="flex items-center gap-6 mb-6">
+                    <div className="relative w-28 h-28 shrink-0">
+                      <svg viewBox="0 0 36 36" className="w-full h-full -rotate-90">
+                        <circle cx="18" cy="18" r="15.5" fill="none" stroke="currentColor" className="text-gray-800/80" strokeWidth="3" />
+                        <circle
+                          cx="18" cy="18" r="15.5" fill="none"
+                          className="text-emerald-500"
+                          strokeWidth="3"
+                          strokeDasharray={`${((statistics.processed_count - statistics.biased_count) / Math.max(statistics.total_articles, 1)) * 97.4} 97.4`}
+                          strokeLinecap="round"
+                        />
+                        <circle
+                          cx="18" cy="18" r="15.5" fill="none"
+                          className="text-red-500"
+                          strokeWidth="3"
+                          strokeDasharray={`${(statistics.biased_count / Math.max(statistics.total_articles, 1)) * 97.4} 97.4`}
+                          strokeDashoffset={`-${((statistics.processed_count - statistics.biased_count) / Math.max(statistics.total_articles, 1)) * 97.4}`}
+                          strokeLinecap="round"
+                        />
+                        <circle
+                          cx="18" cy="18" r="15.5" fill="none"
+                          className="text-gray-600"
+                          strokeWidth="3"
+                          strokeDasharray={`${((statistics.total_articles - statistics.processed_count) / Math.max(statistics.total_articles, 1)) * 97.4} 97.4`}
+                          strokeDashoffset={`-${(statistics.processed_count / Math.max(statistics.total_articles, 1)) * 97.4}`}
+                          strokeLinecap="round"
+                        />
+                      </svg>
+                      <div className="absolute inset-0 flex flex-col items-center justify-center">
+                        <span className="text-lg font-bold text-white">{statistics.total_articles}</span>
+                        <span className="text-[9px] text-gray-500 font-medium">TOTAL</span>
+                      </div>
+                    </div>
+
+                    <div className="space-y-3 flex-1">
+                      <div className="flex items-center gap-2.5">
+                        <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 shrink-0" />
+                        <div className="flex-1">
+                          <div className="flex justify-between">
+                            <span className="text-xs text-gray-300">Neutral</span>
+                            <span className="text-xs font-bold text-gray-400">{statistics.processed_count - statistics.biased_count}</span>
+                          </div>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2.5">
+                        <span className="w-2.5 h-2.5 rounded-full bg-red-500 shrink-0" />
+                        <div className="flex-1">
+                          <div className="flex justify-between">
+                            <span className="text-xs text-gray-300">Biased</span>
+                            <span className="text-xs font-bold text-gray-400">{statistics.biased_count}</span>
+                          </div>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2.5">
+                        <span className="w-2.5 h-2.5 rounded-full bg-gray-600 shrink-0" />
+                        <div className="flex-1">
+                          <div className="flex justify-between">
+                            <span className="text-xs text-gray-300">Unprocessed</span>
+                            <span className="text-xs font-bold text-gray-400">{statistics.total_articles - statistics.processed_count}</span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Progress bar */}
+                  <div>
+                    <div className="flex justify-between mb-1.5">
+                      <span className="text-[11px] text-gray-500">Processing progress</span>
+                      <span className="text-[11px] font-bold text-gray-400">
+                        {statistics.total_articles > 0 ? ((statistics.processed_count / statistics.total_articles) * 100).toFixed(1) : 0}%
+                      </span>
+                    </div>
+                    <div className="h-2 rounded-full bg-gray-800/80 overflow-hidden">
+                      <div
+                        className="h-full rounded-full bg-gradient-to-r from-primary-500 to-emerald-500 transition-all duration-700"
+                        style={{ width: `${statistics.total_articles > 0 ? (statistics.processed_count / statistics.total_articles) * 100 : 0}%` }}
+                      />
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* ── Category Stat Cards ────────────────── */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mb-8">
           {initialLoading
             ? Array.from({ length: 4 }).map((_, i) => <StatSkeleton key={i} />)
-            : CATEGORIES.map((cat) => {
+            : sortedCategories.map((cat) => {
                 const data = categoryData[cat.key];
                 const count = data?.total || 0;
                 return (
@@ -293,7 +486,7 @@ const ArticlesPage = () => {
 
         {/* ── Category Sections ──────────────────── */}
         {!initialLoading &&
-          CATEGORIES.map((cat) => {
+          sortedCategories.map((cat) => {
             const data = categoryData[cat.key];
             if (!data || data.articles.length === 0) return null;
 

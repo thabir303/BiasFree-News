@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.database.database import get_db
-from app.models.schemas import UserSignup, UserSignin, TokenResponse, UserResponse
+from app.models.schemas import UserSignup, UserSignin, TokenResponse, UserResponse, CategoryPreferencesRequest, CategoryPreferencesResponse
 from app.services.auth_service import AuthService, get_current_user
 from app.services.email_service import email_service
 from app.database.models import User
@@ -57,7 +57,8 @@ async def signup(
             username=user.username,
             email=user.email,
             role=user.role.value,
-            is_active=user.is_active
+            is_active=user.is_active,
+            category_preferences=user.category_preferences
         )
         
         message = "Account created successfully! A verification email has been sent to your email address. Please check your inbox and verify your email to login."
@@ -121,7 +122,8 @@ async def signin(
         username=user.username,
         email=user.email,
         role=user.role.value,
-        is_active=user.is_active
+        is_active=user.is_active,
+        category_preferences=user.category_preferences
     )
     
     return TokenResponse(
@@ -145,7 +147,8 @@ async def get_current_user_info(
         username=current_user.username,
         email=current_user.email,
         role=current_user.role.value,
-        is_active=current_user.is_active
+        is_active=current_user.is_active,
+        category_preferences=current_user.category_preferences
     )
 
 
@@ -245,3 +248,61 @@ async def resend_verification(
         "message": "Verification email sent successfully! Please check your inbox.",
         "success": True
     }
+
+
+@router.get("/preferences", response_model=CategoryPreferencesResponse)
+async def get_category_preferences(
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Get user's category preferences (priority order).
+    
+    Returns ordered list of category keys.
+    """
+    prefs = current_user.category_preferences or []
+    return CategoryPreferencesResponse(categories=prefs)
+
+
+@router.put("/preferences", response_model=CategoryPreferencesResponse)
+async def update_category_preferences(
+    request: CategoryPreferencesRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Update user's category preferences (priority order).
+    
+    - **categories**: Ordered list of category keys, e.g. ["রাজনীতি", "বিশ্ব", "মতামত", "বাংলাদেশ"]
+    
+    The first category has highest priority.
+    """
+    VALID_CATEGORIES = {"রাজনীতি", "বিশ্ব", "মতামত", "বাংলাদেশ"}
+    
+    # Validate that all categories are valid
+    for cat in request.categories:
+        if cat not in VALID_CATEGORIES:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Invalid category: {cat}. Valid categories: {', '.join(VALID_CATEGORIES)}"
+            )
+    
+    # Remove duplicates while preserving order
+    seen = set()
+    unique_categories = []
+    for cat in request.categories:
+        if cat not in seen:
+            seen.add(cat)
+            unique_categories.append(cat)
+    
+    # Re-fetch user within THIS db session to avoid detached instance error
+    user = db.query(User).filter(User.id == current_user.id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    user.category_preferences = unique_categories
+    db.commit()
+    
+    return CategoryPreferencesResponse(
+        categories=unique_categories,
+        message="Category preferences updated successfully!"
+    )

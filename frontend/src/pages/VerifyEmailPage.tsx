@@ -36,13 +36,13 @@ const VerifyEmailPage: React.FC = () => {
     }, [token, navigate]);
 
     return (
-        <div className="min-h-[calc(100vh-64px)] bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 flex items-center justify-center px-4">
+        <div className="min-h-screen flex items-center justify-center px-4 py-12">
             <div className="max-w-md w-full">
-                <div className="bg-white/10 backdrop-blur-xl rounded-3xl border border-white/20 shadow-2xl p-8 text-center">
+                <div className="bg-gray-900/60 backdrop-blur-xl rounded-2xl border border-gray-800 shadow-2xl p-8 text-center">
                     {loading && (
-                        <>
-                            <div className="inline-flex items-center justify-center w-20 h-20 bg-gradient-to-br from-purple-500 to-pink-600 rounded-full mb-6">
-                                <Loader2 className="h-10 w-10 text-white animate-spin" />
+                        <React.Fragment>
+                            <div className="inline-flex items-center justify-center w-20 h-20 bg-primary-500/20 rounded-full mb-6">
+                                <Loader2 className="h-10 w-10 text-primary-400 animate-spin" />
                             </div>
                             <h2 className="text-2xl font-bold text-white mb-2">
                                 Verifying your email...
@@ -50,11 +50,11 @@ const VerifyEmailPage: React.FC = () => {
                             <p className="text-gray-400">
                                 Please wait while we verify your email address.
                             </p>
-                        </>
+                        </React.Fragment>
                     )}
 
                     {!loading && success && (
-                        <>
+                        <React.Fragment>
                             <div className="inline-flex items-center justify-center w-20 h-20 bg-green-500/20 rounded-full mb-6">
                                 <CheckCircle className="h-10 w-10 text-green-400" />
                             </div>
@@ -69,15 +69,15 @@ const VerifyEmailPage: React.FC = () => {
                             </p>
                             <Link
                                 to="/login"
-                                className="inline-block px-6 py-3 bg-gradient-to-r from-purple-600 to-pink-600 text-white font-semibold rounded-xl hover:from-purple-700 hover:to-pink-700 transition-all duration-300 shadow-lg"
+                                className="inline-block px-6 py-3 bg-primary-500 text-white font-semibold rounded-xl hover:bg-primary-600 transition-all duration-300 shadow-lg shadow-primary-500/20"
                             >
                                 Go to Login
                             </Link>
-                        </>
+                        </React.Fragment>
                     )}
 
                     {!loading && error && (
-                        <>
+                        <React.Fragment>
                             <div className="inline-flex items-center justify-center w-20 h-20 bg-red-500/20 rounded-full mb-6">
                                 <XCircle className="h-10 w-10 text-red-400" />
                             </div>
@@ -90,18 +90,18 @@ const VerifyEmailPage: React.FC = () => {
                             <div className="space-y-3">
                                 <Link
                                     to="/signup"
-                                    className="block w-full px-6 py-3 bg-gradient-to-r from-purple-600 to-pink-600 text-white font-semibold rounded-xl hover:from-purple-700 hover:to-pink-700 transition-all duration-300 shadow-lg"
+                                    className="block w-full px-6 py-3 bg-primary-500 text-white font-semibold rounded-xl hover:bg-primary-600 transition-all duration-300 shadow-lg shadow-primary-500/20"
                                 >
                                     Create New Account
                                 </Link>
                                 <Link
                                     to="/login"
-                                    className="block w-full px-6 py-3 bg-white/5 border border-white/10 text-white font-semibold rounded-xl hover:bg-white/10 transition-all duration-300"
+                                    className="block w-full px-6 py-3 bg-gray-800/60 border border-gray-700 text-white font-semibold rounded-xl hover:bg-gray-800 transition-all duration-300"
                                 >
                                     Back to Login
                                 </Link>
                             </div>
-                        </>
+                        </React.Fragment>
                     )}
                 </div>
             </div>

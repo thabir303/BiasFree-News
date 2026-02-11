@@ -8,6 +8,7 @@ export interface User {
     email: string;
     role: 'admin' | 'user';
     is_active: boolean;
+    category_preferences?: string[];
 }
 
 export interface SignupRequest {

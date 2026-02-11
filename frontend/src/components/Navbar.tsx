@@ -91,6 +91,13 @@ const Navbar = () => {
                       <p className="text-sm text-gray-400">Signed in as</p>
                       <p className="text-sm font-medium text-white truncate">{user?.email}</p>
                     </div>
+                    <Link
+                      to="/profile"
+                      onClick={() => setShowUserMenu(false)}
+                      className="block w-full text-left px-4 py-2 text-sm text-gray-300 hover:bg-gray-700 hover:text-white transition-colors"
+                    >
+                      👤 Profile
+                    </Link>
                     <button
                       onClick={handleLogout}
                       className="w-full text-left px-4 py-2 text-sm text-red-400 hover:bg-gray-700 transition-colors"
@@ -171,6 +178,13 @@ const Navbar = () => {
                     </span>
                   )}
                 </div>
+                <Link
+                  to="/profile"
+                  onClick={() => setIsMobileMenuOpen(false)}
+                  className="block w-full text-left px-3 py-2 text-gray-300 hover:bg-gray-800 hover:text-white rounded-lg transition-colors"
+                >
+                  👤 Profile
+                </Link>
                 <button
                   onClick={() => {
                     handleLogout();
