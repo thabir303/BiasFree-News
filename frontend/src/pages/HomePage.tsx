@@ -157,7 +157,7 @@ const HomePage = () => {
                   Ready to Analyze
                 </h3>
                 <p className="text-gray-400 text-sm">
-                  Enter article content or URL to get started
+                  Paste article text above to get started
                 </p>
               </div>
             )}
@@ -171,8 +171,7 @@ const HomePage = () => {
             <div>
               <div className="font-semibold text-primary-400 mb-2">How to use:</div>
               <ul className="text-sm text-gray-300 space-y-1 list-disc list-inside">
-                <li>Paste a news article URL from supported Bangladeshi newspapers</li>
-                <li>Or directly paste article text for instant analysis</li>
+                <li>Paste article text directly for instant bias analysis</li>
                 <li>Get detailed bias detection with word-level explanations</li>
                 <li>View the AI-generated neutral version of the article</li>
                 <li>Explore the database of automatically scraped articles in Articles tab</li>

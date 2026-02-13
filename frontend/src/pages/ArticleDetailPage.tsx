@@ -77,20 +77,62 @@ const ArticleDetailPage = () => {
           });
         }
       });
-    } else if (type === 'debiased' && article?.changes_made && Array.isArray(article.changes_made)) {
+    } else if (type === 'debiased' && article?.changes_made && Array.isArray(article.changes_made) && article?.original_content) {
+      // Find positions of original biased terms in the ORIGINAL text
+      // to determine where actual changes happened, instead of highlighting
+      // every occurrence of the debiased word in the entire text.
+      const originalText = article.original_content;
+
+      const allPositions: Array<{ origStart: number; origEnd: number; change: any }> = [];
+
       article.changes_made.forEach((change: any) => {
-        if (!change || !change.debiased) return;
-        const regex = new RegExp(change.debiased.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi');
+        if (!change || !change.original || !change.debiased) return;
+        const regex = new RegExp(change.original.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi');
         let match;
-        while ((match = regex.exec(text)) !== null) {
-          spans.push({
-            start: match.index,
-            end: match.index + match[0].length,
-            text: match[0],
-            data: change,
+        while ((match = regex.exec(originalText)) !== null) {
+          allPositions.push({
+            origStart: match.index,
+            origEnd: match.index + match[0].length,
+            change,
           });
         }
       });
+
+      // Sort by position in original text
+      allPositions.sort((a, b) => a.origStart - b.origStart);
+
+      // Remove overlapping positions
+      const nonOverlapping: typeof allPositions = [];
+      let lastEndPos = 0;
+      for (const pos of allPositions) {
+        if (pos.origStart >= lastEndPos) {
+          nonOverlapping.push(pos);
+          lastEndPos = pos.origEnd;
+        }
+      }
+
+      // Compute corresponding positions in the debiased text
+      let cumulativeOffset = 0;
+      for (const pos of nonOverlapping) {
+        const origTermLen = pos.origEnd - pos.origStart;
+        const debTermLen = pos.change.debiased.length;
+
+        const debStart = pos.origStart + cumulativeOffset;
+        const debEnd = debStart + debTermLen;
+
+        // Verify the debiased word is actually at this mapped position
+        const textAtPos = text.substring(debStart, debEnd);
+        if (textAtPos.toLowerCase() === pos.change.debiased.toLowerCase()) {
+          spans.push({
+            start: debStart,
+            end: debEnd,
+            text: textAtPos,
+            data: pos.change,
+          });
+          // Only adjust offset when replacement actually occurred
+          cumulativeOffset += (debTermLen - origTermLen);
+        }
+      }
     }
 
     spans.sort((a, b) => a.start - b.start);

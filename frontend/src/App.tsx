@@ -12,6 +12,7 @@ import LoginPage from './pages/LoginPage';
 import SignupPage from './pages/SignupPage';
 import VerifyEmailPage from './pages/VerifyEmailPage';
 import ProfilePage from './pages/ProfilePage';
+import AnalysisDetailPage from './pages/AnalysisDetailPage';
 
 function App() {
   return (
@@ -35,6 +36,14 @@ function App() {
               element={
                 <ProtectedRoute>
                   <DashboardPage />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/analysis/:id"
+              element={
+                <ProtectedRoute>
+                  <AnalysisDetailPage />
                 </ProtectedRoute>
               }
             />

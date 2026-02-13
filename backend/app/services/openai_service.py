@@ -269,8 +269,8 @@ Analyze for bias and respond in JSON."""
     
     async def debias_content(self, content: str, biased_terms: List[Dict]) -> Dict:
         """
-        Debias article content by replacing biased terms with neutral alternatives.
-        Uses programmatic replacement for reliability.
+        Debias article content using LLM-based rewriting.
+        Falls back to programmatic replacement if LLM fails.
         
         Args:
             content: Original article content
@@ -285,11 +285,76 @@ Analyze for bias and respond in JSON."""
                 "changes": []
             }
         
-        # Perform programmatic replacement for reliability
+        # Build a terms summary for the LLM
+        terms_list = []
+        for term in biased_terms[:10]:
+            original_term = term.get("term", "")
+            neutral_term = term.get("neutral_alternative", "")
+            reason = term.get("reason", "")
+            if original_term and neutral_term:
+                terms_list.append(f"- \"{original_term}\" → \"{neutral_term}\" (reason: {reason})")
+        
+        terms_text = "\n".join(terms_list)
+        
+        system_prompt = """You are a Bengali text debiasing expert. You will be given an article and a list of biased terms with their neutral alternatives. 
+Rewrite the article replacing ONLY the biased terms/phrases with their neutral alternatives. Keep EVERYTHING else exactly the same — same structure, same paragraphs, same punctuation.
+
+CRITICAL RULES:
+1. Do NOT add, remove, or rearrange any sentences
+2. Do NOT change any text that is not biased
+3. Only replace the specific biased terms/phrases listed
+4. Maintain all original formatting and paragraph structure
+5. If a biased term appears multiple times, replace ALL occurrences
+
+Respond ONLY with valid JSON:
+{
+  "debiased_content": "the full rewritten article text",
+  "changes": [
+    {
+      "original": "original biased text",
+      "debiased": "neutral replacement text", 
+      "reason": "why it was changed"
+    }
+  ]
+}"""
+        
+        user_prompt = f"""Biased terms to replace:
+{terms_text}
+
+Original article:
+{content[:3000]}"""
+        
+        logger.info("=" * 80)
+        logger.info("DEBIASING REQUEST TO LLM")
+        logger.info("=" * 80)
+        logger.info(f"Terms to replace: {len(terms_list)}")
+        logger.info(f"Content length: {len(content)} chars")
+        
+        try:
+            response = await self._call_api(system_prompt, user_prompt, "json_object", dynamic_max_tokens=True)
+            json_str = self._extract_json(response)
+            data = json.loads(json_str)
+            
+            debiased_content = data.get("debiased_content", "")
+            changes = data.get("changes", [])
+            
+            # Validate the LLM actually produced different content
+            if debiased_content and debiased_content.strip() != content.strip():
+                logger.info(f"LLM debiasing successful: {len(changes)} changes reported")
+                return {
+                    "debiased_content": debiased_content,
+                    "changes": changes
+                }
+            else:
+                logger.warning("LLM debiasing produced same content, falling back to programmatic replacement")
+        except Exception as e:
+            logger.warning(f"LLM debiasing failed ({e}), falling back to programmatic replacement")
+        
+        # Fallback: programmatic replacement
         debiased_content = content
         changes = []
         
-        for term in biased_terms[:10]:  # Limit to 10 terms
+        for term in biased_terms[:10]:
             original_term = term.get("term", "")
             neutral_term = term.get("neutral_alternative", "")
             reason = term.get("reason", "Biased term replaced")

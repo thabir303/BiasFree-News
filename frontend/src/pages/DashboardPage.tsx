@@ -90,8 +90,9 @@ const DashboardPage = () => {
                   : 'text-emerald-400 bg-emerald-500/10 border-emerald-500/30';
 
                 return (
-                  <div
+                  <Link
                     key={analysis.id}
+                    to={`/analysis/${analysis.id}`}
                     className="flex items-center gap-4 p-4 rounded-xl border border-gray-800/50 bg-gray-800/20 hover:bg-gray-800/40 hover:border-gray-700 transition-all group"
                   >
                     {/* Bias score indicator */}
@@ -140,13 +141,13 @@ const DashboardPage = () => {
 
                     {/* Delete button */}
                     <button
-                      onClick={() => handleDelete(analysis.id)}
+                      onClick={(e) => { e.preventDefault(); e.stopPropagation(); handleDelete(analysis.id); }}
                       className="shrink-0 p-1.5 rounded-lg text-gray-600 hover:text-red-400 hover:bg-red-500/10 transition-all opacity-0 group-hover:opacity-100"
                       title="Delete analysis"
                     >
                       <Trash2 className="w-4 h-4" />
                     </button>
-                  </div>
+                  </Link>
                 );
               })}
             </div>
