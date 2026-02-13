@@ -6,10 +6,10 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.database.database import get_db
-from app.models.schemas import UserSignup, UserSignin, TokenResponse, UserResponse, CategoryPreferencesRequest, CategoryPreferencesResponse
+from app.models.schemas import UserSignup, UserSignin, TokenResponse, UserResponse, CategoryPreferencesRequest, CategoryPreferencesResponse, UserAnalysisCreate, UserAnalysisResponse, UserAnalysesListResponse
 from app.services.auth_service import AuthService, get_current_user
 from app.services.email_service import email_service
-from app.database.models import User
+from app.database.models import User, UserAnalysis
 from app.config import settings
 import logging
 
@@ -306,3 +306,133 @@ async def update_category_preferences(
         categories=unique_categories,
         message="Category preferences updated successfully!"
     )
+
+
+# ============================================
+# User Manual Analysis Endpoints
+# ============================================
+
+@router.post("/analyses", response_model=UserAnalysisResponse, status_code=status.HTTP_201_CREATED)
+async def save_user_analysis(
+    analysis_data: UserAnalysisCreate,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Save a manual analysis result for the current user.
+    """
+    try:
+        analysis = UserAnalysis(
+            user_id=current_user.id,
+            title=analysis_data.title,
+            original_content=analysis_data.original_content,
+            is_biased=analysis_data.is_biased,
+            bias_score=analysis_data.bias_score,
+            bias_summary=analysis_data.bias_summary,
+            biased_terms=analysis_data.biased_terms,
+            confidence=analysis_data.confidence,
+            debiased_content=analysis_data.debiased_content,
+            changes_made=analysis_data.changes_made,
+            total_changes=analysis_data.total_changes,
+            generated_headlines=analysis_data.generated_headlines,
+            recommended_headline=analysis_data.recommended_headline,
+            headline_reasoning=analysis_data.headline_reasoning,
+            processing_time=analysis_data.processing_time,
+        )
+        db.add(analysis)
+        db.commit()
+        db.refresh(analysis)
+        
+        return UserAnalysisResponse(
+            id=analysis.id,
+            user_id=analysis.user_id,
+            title=analysis.title,
+            original_content=analysis.original_content,
+            is_biased=analysis.is_biased,
+            bias_score=analysis.bias_score,
+            bias_summary=analysis.bias_summary,
+            biased_terms=analysis.biased_terms,
+            confidence=analysis.confidence,
+            debiased_content=analysis.debiased_content,
+            changes_made=analysis.changes_made,
+            total_changes=analysis.total_changes,
+            generated_headlines=analysis.generated_headlines,
+            recommended_headline=analysis.recommended_headline,
+            headline_reasoning=analysis.headline_reasoning,
+            processing_time=analysis.processing_time,
+            created_at=analysis.created_at.isoformat(),
+        )
+    except Exception as e:
+        logger.error(f"Error saving user analysis: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to save analysis: {str(e)}"
+        )
+
+
+@router.get("/analyses", response_model=UserAnalysesListResponse)
+async def get_user_analyses(
+    limit: int = 20,
+    skip: int = 0,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Get all manual analyses for the current user, newest first.
+    """
+    total = db.query(UserAnalysis).filter(UserAnalysis.user_id == current_user.id).count()
+    analyses = (
+        db.query(UserAnalysis)
+        .filter(UserAnalysis.user_id == current_user.id)
+        .order_by(UserAnalysis.created_at.desc())
+        .offset(skip)
+        .limit(limit)
+        .all()
+    )
+    
+    return UserAnalysesListResponse(
+        analyses=[
+            UserAnalysisResponse(
+                id=a.id,
+                user_id=a.user_id,
+                title=a.title,
+                original_content=a.original_content,
+                is_biased=a.is_biased,
+                bias_score=a.bias_score,
+                bias_summary=a.bias_summary,
+                biased_terms=a.biased_terms,
+                confidence=a.confidence,
+                debiased_content=a.debiased_content,
+                changes_made=a.changes_made,
+                total_changes=a.total_changes,
+                generated_headlines=a.generated_headlines,
+                recommended_headline=a.recommended_headline,
+                headline_reasoning=a.headline_reasoning,
+                processing_time=a.processing_time,
+                created_at=a.created_at.isoformat(),
+            )
+            for a in analyses
+        ],
+        total=total,
+    )
+
+
+@router.delete("/analyses/{analysis_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_user_analysis(
+    analysis_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Delete a manual analysis owned by the current user.
+    """
+    analysis = (
+        db.query(UserAnalysis)
+        .filter(UserAnalysis.id == analysis_id, UserAnalysis.user_id == current_user.id)
+        .first()
+    )
+    if not analysis:
+        raise HTTPException(status_code=404, detail="Analysis not found")
+    
+    db.delete(analysis)
+    db.commit()

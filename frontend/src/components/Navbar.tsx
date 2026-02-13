@@ -1,11 +1,11 @@
 import { Link, useLocation } from 'react-router-dom';
 import { useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
+import { LogOut } from 'lucide-react';
 
 const Navbar = () => {
   const location = useLocation();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
-  const [showUserMenu, setShowUserMenu] = useState(false);
   const { user, isAuthenticated, isAdmin, logout } = useAuth();
 
   const navItems = [
@@ -25,11 +25,6 @@ const Navbar = () => {
 
   const isActive = (path: string) => location.pathname === path;
 
-  const handleLogout = () => {
-    logout();
-    setShowUserMenu(false);
-  };
-
   return (
     <nav className="bg-gray-900/95 backdrop-blur-sm border-b border-gray-800 sticky top-0 z-50">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -48,18 +43,18 @@ const Navbar = () => {
           </Link>
 
           {/* Desktop Navigation */}
-          <div className="hidden md:flex items-center space-x-1">
+          <div className="hidden md:flex items-center space-x-1.5">
             {visibleNavItems.map((item) => (
               <Link
                 key={item.path}
                 to={item.path}
                 className={`
                   px-4 py-2 rounded-lg font-medium transition-all duration-200
-                  flex items-center space-x-2
+                  flex items-center space-x-2 border
                   ${
                     isActive(item.path)
-                      ? 'bg-primary-500/20 text-primary-400 border border-primary-500/30'
-                      : 'text-gray-300 hover:bg-gray-800 hover:text-white'
+                      ? 'bg-primary-500/15 text-primary-400 border-primary-500/40 shadow-sm shadow-primary-500/10'
+                      : 'text-gray-400 border-gray-800/60 bg-gray-900/30 hover:bg-gray-800/60 hover:text-white hover:border-gray-600 hover:shadow-md hover:shadow-black/20'
                   }
                 `}
               >
@@ -70,47 +65,41 @@ const Navbar = () => {
 
             {/* Auth Section */}
             {isAuthenticated ? (
-              <div className="relative ml-3">
-                <button
-                  onClick={() => setShowUserMenu(!showUserMenu)}
-                  className="flex items-center space-x-2 px-4 py-2 rounded-lg text-gray-300 hover:bg-gray-800 hover:text-white transition-colors"
+              <div className="flex items-center ml-2 space-x-1.5">
+                {/* Profile - Direct link */}
+                <Link
+                  to="/profile"
+                  className={`
+                    flex items-center space-x-2 px-4 py-2 rounded-lg font-medium transition-all duration-200 border
+                    ${
+                      isActive('/profile')
+                        ? 'bg-primary-500/15 text-primary-400 border-primary-500/40 shadow-sm shadow-primary-500/10'
+                        : 'text-gray-400 border-gray-800/60 bg-gray-900/30 hover:bg-gray-800/60 hover:text-white hover:border-gray-600 hover:shadow-md hover:shadow-black/20'
+                    }
+                  `}
                 >
                   <span className="text-lg">👤</span>
-                  <span className="font-medium">{user?.username}</span>
+                  <span>{user?.username}</span>
                   {isAdmin && (
-                    <span className="px-2 py-0.5 text-xs bg-yellow-500/20 text-yellow-400 rounded">
+                    <span className="px-1.5 py-0.5 text-[10px] bg-yellow-500/20 text-yellow-400 rounded font-semibold">
                       Admin
                     </span>
                   )}
-                </button>
+                </Link>
 
-                {/* User Dropdown */}
-                {showUserMenu && (
-                  <div className="absolute right-0 mt-2 w-48 bg-gray-800 rounded-lg shadow-lg border border-gray-700 py-1">
-                    <div className="px-4 py-2 border-b border-gray-700">
-                      <p className="text-sm text-gray-400">Signed in as</p>
-                      <p className="text-sm font-medium text-white truncate">{user?.email}</p>
-                    </div>
-                    <Link
-                      to="/profile"
-                      onClick={() => setShowUserMenu(false)}
-                      className="block w-full text-left px-4 py-2 text-sm text-gray-300 hover:bg-gray-700 hover:text-white transition-colors"
-                    >
-                      👤 Profile
-                    </Link>
-                    <button
-                      onClick={handleLogout}
-                      className="w-full text-left px-4 py-2 text-sm text-red-400 hover:bg-gray-700 transition-colors"
-                    >
-                      🚪 Logout
-                    </button>
-                  </div>
-                )}
+                {/* Logout button */}
+                <button
+                  onClick={logout}
+                  className="p-2 rounded-lg border border-gray-800/60 bg-gray-900/30 text-gray-500 hover:text-red-400 hover:border-red-500/40 hover:bg-red-500/10 transition-all duration-200"
+                  title="Logout"
+                >
+                  <LogOut className="w-4.5 h-4.5" />
+                </button>
               </div>
             ) : (
               <Link
                 to="/login"
-                className="ml-3 px-4 py-2 rounded-lg font-medium bg-primary-500 text-white hover:bg-primary-600 transition-colors"
+                className="ml-2 px-4 py-2 rounded-lg font-medium bg-primary-500 text-white hover:bg-primary-600 transition-all duration-200 border border-primary-500 hover:shadow-md hover:shadow-primary-500/20"
               >
                 Login
               </Link>
@@ -120,7 +109,7 @@ const Navbar = () => {
           {/* Mobile menu button */}
           <button
             onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
-            className="md:hidden p-2 rounded-lg text-gray-400 hover:text-white hover:bg-gray-800 transition-colors"
+            className="md:hidden p-2 rounded-lg text-gray-400 hover:text-white hover:bg-gray-800 transition-colors border border-gray-800/60"
           >
             <svg
               className="w-6 h-6"
@@ -151,12 +140,12 @@ const Navbar = () => {
                 to={item.path}
                 onClick={() => setIsMobileMenuOpen(false)}
                 className={`
-                  px-3 py-2 rounded-lg font-medium transition-all
+                  px-3 py-2.5 rounded-lg font-medium transition-all duration-200 border
                   flex items-center space-x-2
                   ${
                     isActive(item.path)
-                      ? 'bg-primary-500/20 text-primary-400 border border-primary-500/30'
-                      : 'text-gray-300 hover:bg-gray-800 hover:text-white'
+                      ? 'bg-primary-500/15 text-primary-400 border-primary-500/40'
+                      : 'text-gray-400 border-gray-800/60 hover:bg-gray-800/60 hover:text-white hover:border-gray-600'
                   }
                 `}
               >
@@ -167,39 +156,43 @@ const Navbar = () => {
 
             {/* Mobile Auth Section */}
             {isAuthenticated ? (
-              <div className="border-t border-gray-800 pt-2 mt-2">
-                <div className="px-3 py-2">
-                  <p className="text-xs text-gray-400">Signed in as</p>
-                  <p className="text-sm font-medium text-white">{user?.username}</p>
-                  <p className="text-xs text-gray-400">{user?.email}</p>
-                  {isAdmin && (
-                    <span className="inline-block mt-1 px-2 py-0.5 text-xs bg-yellow-500/20 text-yellow-400 rounded">
-                      Admin
-                    </span>
-                  )}
-                </div>
+              <div className="border-t border-gray-800 pt-2 mt-2 space-y-1">
                 <Link
                   to="/profile"
                   onClick={() => setIsMobileMenuOpen(false)}
-                  className="block w-full text-left px-3 py-2 text-gray-300 hover:bg-gray-800 hover:text-white rounded-lg transition-colors"
+                  className={`
+                    flex items-center space-x-2 px-3 py-2.5 rounded-lg font-medium transition-all duration-200 border
+                    ${
+                      isActive('/profile')
+                        ? 'bg-primary-500/15 text-primary-400 border-primary-500/40'
+                        : 'text-gray-400 border-gray-800/60 hover:bg-gray-800/60 hover:text-white hover:border-gray-600'
+                    }
+                  `}
                 >
-                  👤 Profile
+                  <span>👤</span>
+                  <span>{user?.username}</span>
+                  {isAdmin && (
+                    <span className="px-1.5 py-0.5 text-[10px] bg-yellow-500/20 text-yellow-400 rounded font-semibold">
+                      Admin
+                    </span>
+                  )}
                 </Link>
                 <button
                   onClick={() => {
-                    handleLogout();
+                    logout();
                     setIsMobileMenuOpen(false);
                   }}
-                  className="w-full text-left px-3 py-2 text-red-400 hover:bg-gray-800 rounded-lg transition-colors"
+                  className="w-full text-left px-3 py-2.5 rounded-lg text-red-400 border border-gray-800/60 hover:bg-red-500/10 hover:border-red-500/40 transition-all duration-200 flex items-center space-x-2"
                 >
-                  🚪 Logout
+                  <LogOut className="w-4 h-4" />
+                  <span>Logout</span>
                 </button>
               </div>
             ) : (
               <Link
                 to="/login"
                 onClick={() => setIsMobileMenuOpen(false)}
-                className="block px-3 py-2 rounded-lg font-medium bg-primary-500 text-white hover:bg-primary-600 transition-colors text-center"
+                className="block px-3 py-2.5 rounded-lg font-medium bg-primary-500 text-white hover:bg-primary-600 transition-all duration-200 text-center border border-primary-500"
               >
                 Login
               </Link>

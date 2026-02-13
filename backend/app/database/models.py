@@ -2,7 +2,7 @@
 SQLAlchemy database models for storing articles and analysis results.
 """
 from datetime import datetime
-from sqlalchemy import Column, Integer, String, Text, DateTime, Boolean, Float, JSON, Enum
+from sqlalchemy import Column, Integer, String, Text, DateTime, Boolean, Float, JSON, Enum, ForeignKey
 from sqlalchemy.ext.declarative import declarative_base
 import enum
 
@@ -99,3 +99,39 @@ class SchedulerLog(Base):
     
     def __repr__(self):
         return f"<SchedulerLog(id={self.id}, job={self.job_name}, status={self.status})>"
+
+
+class UserAnalysis(Base):
+    """Model for storing per-user manual article analyses."""
+    
+    __tablename__ = "user_analyses"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    title = Column(String(500), nullable=True)
+    original_content = Column(Text, nullable=False)
+    
+    # Bias Analysis Results
+    is_biased = Column(Boolean, nullable=True)
+    bias_score = Column(Float, nullable=True)
+    bias_summary = Column(Text, nullable=True)
+    biased_terms = Column(JSON, nullable=True)
+    confidence = Column(Float, nullable=True)
+    
+    # Debiased Content
+    debiased_content = Column(Text, nullable=True)
+    changes_made = Column(JSON, nullable=True)
+    total_changes = Column(Integer, default=0)
+    
+    # Generated Headlines
+    generated_headlines = Column(JSON, nullable=True)
+    recommended_headline = Column(String(500), nullable=True)
+    headline_reasoning = Column(Text, nullable=True)
+    
+    # Processing
+    processing_time = Column(Float, nullable=True)
+    
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    
+    def __repr__(self):
+        return f"<UserAnalysis(id={self.id}, user_id={self.user_id}, title={self.title[:30] if self.title else 'N/A'})>"

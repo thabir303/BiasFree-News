@@ -57,6 +57,58 @@ class CategoryPreferencesResponse(BaseModel):
 
 
 # ============================================
+# User Analysis Schemas
+# ============================================
+
+class UserAnalysisCreate(BaseModel):
+    """Request model for saving a manual analysis."""
+    title: Optional[str] = Field(None, description="Article title")
+    original_content: str = Field(..., min_length=10, description="Original article content")
+    is_biased: Optional[bool] = None
+    bias_score: Optional[float] = None
+    bias_summary: Optional[str] = None
+    biased_terms: Optional[list] = None
+    confidence: Optional[float] = None
+    debiased_content: Optional[str] = None
+    changes_made: Optional[list] = None
+    total_changes: Optional[int] = 0
+    generated_headlines: Optional[list] = None
+    recommended_headline: Optional[str] = None
+    headline_reasoning: Optional[str] = None
+    processing_time: Optional[float] = None
+
+
+class UserAnalysisResponse(BaseModel):
+    """Response model for a saved user analysis."""
+    id: int
+    user_id: int
+    title: Optional[str] = None
+    original_content: str
+    is_biased: Optional[bool] = None
+    bias_score: Optional[float] = None
+    bias_summary: Optional[str] = None
+    biased_terms: Optional[list] = None
+    confidence: Optional[float] = None
+    debiased_content: Optional[str] = None
+    changes_made: Optional[list] = None
+    total_changes: Optional[int] = 0
+    generated_headlines: Optional[list] = None
+    recommended_headline: Optional[str] = None
+    headline_reasoning: Optional[str] = None
+    processing_time: Optional[float] = None
+    created_at: str
+
+    class Config:
+        from_attributes = True
+
+
+class UserAnalysesListResponse(BaseModel):
+    """Response model for list of user analyses."""
+    analyses: List[UserAnalysisResponse]
+    total: int
+
+
+# ============================================
 # Article Processing Schemas
 # ============================================
 

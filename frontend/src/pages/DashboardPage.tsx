@@ -1,25 +1,37 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { api, type Article } from '../services/api';
-import { ChevronRight } from 'lucide-react';
+import { authApi, type UserAnalysis } from '../services/api';
+import { ChevronRight, Trash2, FileText } from 'lucide-react';
 
 const DashboardPage = () => {
   const [loading, setLoading] = useState(true);
-  const [analyzedArticles, setAnalyzedArticles] = useState<Article[]>([]);
+  const [analyses, setAnalyses] = useState<UserAnalysis[]>([]);
+  const [total, setTotal] = useState(0);
 
   useEffect(() => {
-    fetchAnalyzedArticles();
+    fetchAnalyses();
   }, []);
 
-  const fetchAnalyzedArticles = async () => {
+  const fetchAnalyses = async () => {
     setLoading(true);
     try {
-      const result = await api.getArticles({ processed: true, limit: 20, skip: 0 });
-      setAnalyzedArticles(result.articles || []);
+      const result = await authApi.getMyAnalyses({ limit: 30 });
+      setAnalyses(result.analyses || []);
+      setTotal(result.total || 0);
     } catch (error) {
-      console.error('Failed to fetch analyzed articles:', error);
+      console.error('Failed to fetch user analyses:', error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleDelete = async (id: number) => {
+    try {
+      await authApi.deleteAnalysis(id);
+      setAnalyses(prev => prev.filter(a => a.id !== id));
+      setTotal(prev => prev - 1);
+    } catch (error) {
+      console.error('Failed to delete analysis:', error);
     }
   };
   
@@ -37,79 +49,104 @@ const DashboardPage = () => {
         {/* Header */}
         <div className="mb-8">
           <h1 className="text-4xl font-bold text-white mb-2">📊 Dashboard</h1>
-          <p className="text-gray-400">Your analyzed articles history</p>
+          <p className="text-gray-400">Your personal analysis history</p>
         </div>
 
-        {/* Recently Analyzed Articles */}
+        {/* Manual Analysis History */}
         <div className="bg-gray-900/50 backdrop-blur-sm rounded-xl border border-gray-800 p-6">
           <div className="flex items-center justify-between mb-6">
-            <h2 className="text-2xl font-bold text-white flex items-center space-x-2">
-              <span>🔬</span>
-              <span>Recently Analyzed Articles</span>
-            </h2>
+            <div className="flex items-center space-x-3">
+              <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-violet-500 to-fuchsia-500 flex items-center justify-center shadow-md">
+                <FileText className="w-5 h-5 text-white" />
+              </div>
+              <div>
+                <h2 className="text-xl font-bold text-white">Manual Analysis History</h2>
+                <p className="text-xs text-gray-500">{total} analysis{total !== 1 ? 'es' : ''} saved</p>
+              </div>
+            </div>
             <Link
-              to="/articles"
-              className="inline-flex items-center gap-1 text-xs font-medium text-gray-400 hover:text-primary-400 transition-colors"
+              to="/"
+              className="inline-flex items-center gap-1 text-xs font-medium text-gray-400 hover:text-primary-400 transition-colors px-3 py-1.5 rounded-lg border border-gray-800/60 hover:border-gray-600"
             >
-              View All <ChevronRight className="w-3.5 h-3.5" />
+              New Analysis <ChevronRight className="w-3.5 h-3.5" />
             </Link>
           </div>
 
-          {analyzedArticles.length === 0 ? (
-            <div className="text-center py-10">
-              <div className="text-4xl mb-3">🔍</div>
-              <p className="text-gray-400 text-sm">No articles analyzed yet. Go to Articles and click "Analyze" on any article.</p>
+          {analyses.length === 0 ? (
+            <div className="text-center py-14">
+              <div className="text-5xl mb-4">🔬</div>
+              <p className="text-gray-300 font-medium mb-1">No analyses yet</p>
+              <p className="text-gray-500 text-sm">Go to <Link to="/" className="text-primary-400 hover:underline">Analyze</Link> and check any article for bias. Your results will appear here.</p>
             </div>
           ) : (
             <div className="space-y-3">
-              {analyzedArticles.slice(0, 10).map((article) => {
-                const biasColor = article.is_biased
-                  ? article.bias_score >= 70
+              {analyses.map((analysis) => {
+                const biasColor = analysis.is_biased
+                  ? (analysis.bias_score ?? 0) >= 70
                     ? 'text-red-400 bg-red-500/10 border-red-500/30'
-                    : article.bias_score >= 40
+                    : (analysis.bias_score ?? 0) >= 40
                     ? 'text-amber-400 bg-amber-500/10 border-amber-500/30'
                     : 'text-emerald-400 bg-emerald-500/10 border-emerald-500/30'
                   : 'text-emerald-400 bg-emerald-500/10 border-emerald-500/30';
+
                 return (
-                  <Link
-                    key={article.id}
-                    to={`/article/${article.id}`}
-                    className="flex items-center gap-4 p-3.5 rounded-xl border border-gray-800/50 bg-gray-800/20 hover:bg-gray-800/40 hover:border-gray-700 transition-all group"
+                  <div
+                    key={analysis.id}
+                    className="flex items-center gap-4 p-4 rounded-xl border border-gray-800/50 bg-gray-800/20 hover:bg-gray-800/40 hover:border-gray-700 transition-all group"
                   >
-                    {/* Bias indicator */}
+                    {/* Bias score indicator */}
                     <div className={`shrink-0 w-12 h-12 rounded-lg border flex items-center justify-center text-xs font-bold ${biasColor}`}>
-                      {article.is_biased ? `${article.bias_score.toFixed(0)}%` : '✓'}
+                      {analysis.is_biased ? `${(analysis.bias_score ?? 0).toFixed(0)}%` : '✓'}
                     </div>
 
                     {/* Content */}
                     <div className="flex-1 min-w-0">
-                      <h4 className="text-sm font-medium text-gray-200 truncate group-hover:text-white transition-colors">
-                        {article.title || 'Untitled'}
-                      </h4>
-                      <div className="flex items-center gap-2 mt-1">
-                        <span className="text-[11px] text-gray-500 capitalize">{article.source.replace('_', ' ')}</span>
+                      <div className="flex items-center gap-2 mb-0.5">
+                        <h4 className="text-sm font-medium text-gray-200 truncate group-hover:text-white transition-colors">
+                          {analysis.title || 'Untitled Article'}
+                        </h4>
+                        <span className="shrink-0 px-2 py-0.5 text-[10px] font-semibold rounded-full bg-violet-500/15 text-violet-400 border border-violet-500/30">
+                          Manual
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-[11px] text-gray-500">
+                          {analysis.total_changes ?? 0} change{(analysis.total_changes ?? 0) !== 1 ? 's' : ''}
+                        </span>
                         <span className="text-gray-700">·</span>
-                        <span className="text-[11px] text-gray-500">{article.category || 'Uncategorized'}</span>
+                        <span className="text-[11px] text-gray-500">
+                          {analysis.processing_time ? `${analysis.processing_time.toFixed(1)}s` : ''}
+                        </span>
+                        {analysis.recommended_headline && (
+                          <>
+                            <span className="text-gray-700">·</span>
+                            <span className="text-[11px] text-gray-500 truncate max-w-[200px]">
+                              {analysis.recommended_headline}
+                            </span>
+                          </>
+                        )}
                       </div>
                     </div>
 
                     {/* Timestamp */}
                     <div className="shrink-0 text-right">
                       <p className="text-[11px] text-gray-500">
-                        {article.processed_at
-                          ? new Date(article.processed_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
-                          : ''}
+                        {new Date(analysis.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
                       </p>
                       <p className="text-[10px] text-gray-600">
-                        {article.processed_at
-                          ? new Date(article.processed_at).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })
-                          : ''}
+                        {new Date(analysis.created_at).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}
                       </p>
                     </div>
 
-                    {/* Arrow */}
-                    <ChevronRight className="w-4 h-4 text-gray-600 group-hover:text-gray-400 shrink-0 transition-colors" />
-                  </Link>
+                    {/* Delete button */}
+                    <button
+                      onClick={() => handleDelete(analysis.id)}
+                      className="shrink-0 p-1.5 rounded-lg text-gray-600 hover:text-red-400 hover:bg-red-500/10 transition-all opacity-0 group-hover:opacity-100"
+                      title="Delete analysis"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
                 );
               })}
             </div>

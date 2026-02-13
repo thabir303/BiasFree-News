@@ -138,6 +138,38 @@ export const authApi = {
         const response = await authClient.put<{ categories: string[]; message?: string }>('/preferences', { categories });
         return response.data;
     },
+
+    // Save manual analysis result
+    saveAnalysis: async (data: {
+        title?: string;
+        original_content: string;
+        is_biased?: boolean;
+        bias_score?: number;
+        bias_summary?: string;
+        biased_terms?: any[];
+        confidence?: number;
+        debiased_content?: string;
+        changes_made?: any[];
+        total_changes?: number;
+        generated_headlines?: string[];
+        recommended_headline?: string;
+        headline_reasoning?: string;
+        processing_time?: number;
+    }): Promise<UserAnalysis> => {
+        const response = await authClient.post<UserAnalysis>('/analyses', data);
+        return response.data;
+    },
+
+    // Get user's manual analyses
+    getMyAnalyses: async (params?: { limit?: number; skip?: number }): Promise<{ analyses: UserAnalysis[]; total: number }> => {
+        const response = await authClient.get<{ analyses: UserAnalysis[]; total: number }>('/analyses', { params });
+        return response.data;
+    },
+
+    // Delete a manual analysis
+    deleteAnalysis: async (id: number): Promise<void> => {
+        await authClient.delete(`/analyses/${id}`);
+    },
 };
 
 // ============================================
@@ -196,6 +228,26 @@ export interface Newspaper {
     url?: string;
     language: string;
     enabled: boolean;
+}
+
+export interface UserAnalysis {
+    id: number;
+    user_id: number;
+    title: string | null;
+    original_content: string;
+    is_biased: boolean | null;
+    bias_score: number | null;
+    bias_summary: string | null;
+    biased_terms: any[] | null;
+    confidence: number | null;
+    debiased_content: string | null;
+    changes_made: any[] | null;
+    total_changes: number | null;
+    generated_headlines: string[] | null;
+    recommended_headline: string | null;
+    headline_reasoning: string | null;
+    processing_time: number | null;
+    created_at: string;
 }
 
 export interface SchedulerStatus {

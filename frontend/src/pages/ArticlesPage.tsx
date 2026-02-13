@@ -343,79 +343,91 @@ const ArticlesPage = () => {
                   </div>
                 </div>
 
-                {/* ─ Processing Overview ─ */}
+                {/* ─ Analysis Overview (Donut Chart) ─ */}
                 <div className="rounded-2xl border border-gray-800/60 bg-gray-900/40 backdrop-blur-sm p-6">
                   <h4 className="text-sm font-semibold text-white mb-1">বিশ্লেষণ অবস্থা</h4>
                   <p className="text-[11px] text-gray-500 mb-5">Analysis Overview</p>
 
-                  {/* Donut-style summary */}
-                  <div className="flex items-center gap-6 mb-6">
-                    <div className="relative w-28 h-28 shrink-0">
-                      <svg viewBox="0 0 36 36" className="w-full h-full -rotate-90">
-                        <circle cx="18" cy="18" r="15.5" fill="none" stroke="currentColor" className="text-gray-800/80" strokeWidth="3" />
-                        <circle
-                          cx="18" cy="18" r="15.5" fill="none"
-                          className="text-emerald-500"
-                          strokeWidth="3"
-                          strokeDasharray={`${((statistics.processed_count - statistics.biased_count) / Math.max(statistics.total_articles, 1)) * 97.4} 97.4`}
-                          strokeLinecap="round"
-                        />
-                        <circle
-                          cx="18" cy="18" r="15.5" fill="none"
-                          className="text-red-500"
-                          strokeWidth="3"
-                          strokeDasharray={`${(statistics.biased_count / Math.max(statistics.total_articles, 1)) * 97.4} 97.4`}
-                          strokeDashoffset={`-${((statistics.processed_count - statistics.biased_count) / Math.max(statistics.total_articles, 1)) * 97.4}`}
-                          strokeLinecap="round"
-                        />
-                        <circle
-                          cx="18" cy="18" r="15.5" fill="none"
-                          className="text-gray-600"
-                          strokeWidth="3"
-                          strokeDasharray={`${((statistics.total_articles - statistics.processed_count) / Math.max(statistics.total_articles, 1)) * 97.4} 97.4`}
-                          strokeDashoffset={`-${(statistics.processed_count / Math.max(statistics.total_articles, 1)) * 97.4}`}
-                          strokeLinecap="round"
-                        />
-                      </svg>
+                  {/* Donut chart with right-side legend */}
+                  <div className="flex items-center gap-8">
+                    {/* Donut */}
+                    <div className="relative w-36 h-36 shrink-0">
+                      {(() => {
+                        const total = Math.max(statistics.total_articles, 1);
+                        const neutralCount = statistics.processed_count - statistics.biased_count;
+                        const biasedCount = statistics.biased_count;
+                        const unprocessedCount = statistics.total_articles - statistics.processed_count;
+                        const neutralPct = (neutralCount / total) * 100;
+                        const biasedPct = (biasedCount / total) * 100;
+                        const unprocessedPct = (unprocessedCount / total) * 100;
+                        const circumference = 2 * Math.PI * 15.5; // ~97.39
+                        const neutralArc = (neutralPct / 100) * circumference;
+                        const biasedArc = (biasedPct / 100) * circumference;
+                        const unprocessedArc = (unprocessedPct / 100) * circumference;
+                        const gap = 0.8;
+                        return (
+                          <svg viewBox="0 0 36 36" className="w-full h-full" style={{ transform: 'rotate(-90deg)' }}>
+                            {/* Background track */}
+                            <circle cx="18" cy="18" r="15.5" fill="none" stroke="#1f2937" strokeWidth="4.5" />
+                            {/* Neutral (emerald) */}
+                            {neutralPct > 0 && (
+                              <circle cx="18" cy="18" r="15.5" fill="none"
+                                stroke="#10b981" strokeWidth="4.5"
+                                strokeDasharray={`${Math.max(neutralArc - gap, 0)} ${circumference}`}
+                                strokeDashoffset="0"
+                                strokeLinecap="round"
+                              />
+                            )}
+                            {/* Biased (red) */}
+                            {biasedPct > 0 && (
+                              <circle cx="18" cy="18" r="15.5" fill="none"
+                                stroke="#ef4444" strokeWidth="4.5"
+                                strokeDasharray={`${Math.max(biasedArc - gap, 0)} ${circumference}`}
+                                strokeDashoffset={`${-(neutralArc + gap / 2)}`}
+                                strokeLinecap="round"
+                              />
+                            )}
+                            {/* Unprocessed (gray) */}
+                            {unprocessedPct > 0 && (
+                              <circle cx="18" cy="18" r="15.5" fill="none"
+                                stroke="#6b7280" strokeWidth="4.5"
+                                strokeDasharray={`${Math.max(unprocessedArc - gap, 0)} ${circumference}`}
+                                strokeDashoffset={`${-(neutralArc + biasedArc + gap)}`}
+                                strokeLinecap="round"
+                              />
+                            )}
+                          </svg>
+                        );
+                      })()}
                       <div className="absolute inset-0 flex flex-col items-center justify-center">
-                        <span className="text-lg font-bold text-white">{statistics.total_articles}</span>
-                        <span className="text-[9px] text-gray-500 font-medium">TOTAL</span>
+                        <span className="text-2xl font-bold text-white leading-none">{statistics.total_articles}</span>
+                        <span className="text-[10px] text-gray-500 font-semibold tracking-wider mt-0.5">TOTAL</span>
                       </div>
                     </div>
 
-                    <div className="space-y-3 flex-1">
-                      <div className="flex items-center gap-2.5">
-                        <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 shrink-0" />
-                        <div className="flex-1">
-                          <div className="flex justify-between">
-                            <span className="text-xs text-gray-300">Neutral</span>
-                            <span className="text-xs font-bold text-gray-400">{statistics.processed_count - statistics.biased_count}</span>
+                    {/* Legend */}
+                    <div className="flex-1 space-y-4">
+                      {[
+                        { label: 'Neutral', count: statistics.processed_count - statistics.biased_count, color: 'bg-emerald-500', pct: ((statistics.processed_count - statistics.biased_count) / Math.max(statistics.total_articles, 1) * 100) },
+                        { label: 'Biased', count: statistics.biased_count, color: 'bg-red-500', pct: (statistics.biased_count / Math.max(statistics.total_articles, 1) * 100) },
+                        { label: 'Unprocessed', count: statistics.total_articles - statistics.processed_count, color: 'bg-gray-500', pct: ((statistics.total_articles - statistics.processed_count) / Math.max(statistics.total_articles, 1) * 100) },
+                      ].map((item) => (
+                        <div key={item.label} className="flex items-center gap-3">
+                          <span className={`w-3 h-3 rounded-full ${item.color} shrink-0 shadow-sm`} />
+                          <div className="flex-1">
+                            <div className="flex items-baseline justify-between">
+                              <span className="text-sm font-medium text-gray-300">{item.label}</span>
+                              <span className="text-sm font-bold text-white">{item.count.toLocaleString()}</span>
+                            </div>
+                            <span className="text-[11px] text-gray-500">{item.pct.toFixed(1)}%</span>
                           </div>
                         </div>
-                      </div>
-                      <div className="flex items-center gap-2.5">
-                        <span className="w-2.5 h-2.5 rounded-full bg-red-500 shrink-0" />
-                        <div className="flex-1">
-                          <div className="flex justify-between">
-                            <span className="text-xs text-gray-300">Biased</span>
-                            <span className="text-xs font-bold text-gray-400">{statistics.biased_count}</span>
-                          </div>
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-2.5">
-                        <span className="w-2.5 h-2.5 rounded-full bg-gray-600 shrink-0" />
-                        <div className="flex-1">
-                          <div className="flex justify-between">
-                            <span className="text-xs text-gray-300">Unprocessed</span>
-                            <span className="text-xs font-bold text-gray-400">{statistics.total_articles - statistics.processed_count}</span>
-                          </div>
-                        </div>
-                      </div>
+                      ))}
                     </div>
                   </div>
 
                   {/* Progress bar */}
-                  <div>
+                  <div className="mt-6 pt-4 border-t border-gray-800/60">
                     <div className="flex justify-between mb-1.5">
                       <span className="text-[11px] text-gray-500">Processing progress</span>
                       <span className="text-[11px] font-bold text-gray-400">

@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import type { FullProcessResponse } from '../types/index';
-import { api } from '../services/api';
+import { api, authApi } from '../services/api';
 import { useAuth } from '../contexts/AuthContext';
 import ArticleInput from '../components/ArticleInput';
 import ResultsDisplay from '../components/ResultsDisplay';
@@ -30,6 +30,28 @@ const HomePage = () => {
     try {
       const data = await api.fullProcess({ content, title: title || undefined });
       setResults(data);
+
+      // Save analysis to user's history (fire and forget)
+      try {
+        await authApi.saveAnalysis({
+          title: title || undefined,
+          original_content: content,
+          is_biased: data.analysis.is_biased,
+          bias_score: data.analysis.bias_score,
+          bias_summary: data.analysis.summary,
+          biased_terms: data.analysis.biased_terms,
+          confidence: data.analysis.confidence,
+          debiased_content: data.debiased.debiased_content,
+          changes_made: data.debiased.changes,
+          total_changes: data.debiased.total_changes,
+          generated_headlines: data.headline.generated_headlines,
+          recommended_headline: data.headline.recommended_headline,
+          headline_reasoning: data.headline.reasoning,
+          processing_time: data.processing_time_seconds,
+        });
+      } catch (saveErr) {
+        console.warn('Could not save analysis to history:', saveErr);
+      }
     } catch (err: any) {
       console.error('Analysis error:', err);
       
