@@ -3,7 +3,9 @@ import { Link } from 'react-router-dom';
 import { api, authApi, type Article, type Statistics } from '../services/api';
 import { ChevronDown, BarChart3 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
-import ArticleIcon from '../../public/icons/ArticleIcon' 
+import ArticleIcon from '../../public/icons/ArticleIcon'
+import { BarChart } from '@mui/x-charts/BarChart';
+import { PieChart } from '@mui/x-charts/PieChart'; 
 
 const CATEGORIES = [
   { key: 'রাজনীতি', label: 'রাজনীতি', sublabel: 'Politics', icon: '🏛️', gradient: 'from-blue-500 to-indigo-600', accent: 'border-blue-500', bg: 'bg-blue-500/5', ring: 'ring-blue-500/20' },
@@ -317,113 +319,130 @@ const ArticlesPage = () => {
                 <div className="rounded-2xl border border-gray-800/60 bg-gray-900/40 backdrop-blur-sm p-6">
                   <h4 className="text-sm font-semibold text-white mb-1">উৎস ভিত্তিক সংবাদ</h4>
                   <p className="text-[11px] text-gray-500 mb-5">Articles by Source</p>
-                  <div className="space-y-3.5">
-                    {Object.entries(statistics.by_source)
-                      .sort(([, a], [, b]) => b - a)
-                      .map(([source, count]) => {
-                        const max = Math.max(...Object.values(statistics.by_source), 1);
-                        const pct = (count / max) * 100;
-                        const color = SOURCE_COLORS[source] || 'bg-gray-500';
-                        const label = SOURCE_LABELS[source] || source;
-                        return (
-                          <div key={source}>
-                            <div className="flex items-center justify-between mb-1.5">
-                              <span className="text-xs font-medium text-gray-300">{label}</span>
-                              <span className="text-xs font-bold text-gray-400">{count.toLocaleString()}</span>
-                            </div>
-                            <div className="h-2.5 rounded-full bg-gray-800/80 overflow-hidden">
-                              <div
-                                className={`h-full rounded-full ${color} transition-all duration-700 ease-out`}
-                                style={{ width: `${pct}%` }}
-                              />
-                            </div>
-                          </div>
-                        );
-                      })}
+                  
+                  {/* MUI Bar Chart */}
+                  <div className="h-64">
+                    {(() => {
+                      const sources = Object.keys(statistics.by_source);
+                      const sourceColorMap: Record<string, string> = {
+                        'prothom_alo': '#fb923c',
+                        'daily_star': '#38bdf8',
+                        'jugantor': '#f43f5e',
+                        'samakal': '#a78bfa',
+                      };
+                      
+                      return (
+                        <BarChart
+                          xAxis={[{
+                            scaleType: 'band',
+                            data: sources.map(s => SOURCE_LABELS[s] || s),
+                          }]}
+                          series={[{
+                            data: Object.values(statistics.by_source),
+                            color: '#60a5fa',
+                          }]}
+                          colors={sources.map(s => sourceColorMap[s] || '#60a5fa')}
+                          height={240}
+                          margin={{ top: 10, bottom: 30, left: 40, right: 10 }}
+                          sx={{
+                            '& .MuiChartsAxis-tickLabel': {
+                              fill: '#ffffff !important',
+                              fontSize: '12px',
+                              fontWeight: '500',
+                            },
+                            '& .MuiChartsAxis-label': {
+                              fill: '#ffffff !important',
+                            },
+                            '& .MuiChartsAxis-line': {
+                              stroke: '#4b5563',
+                            },
+                            '& .MuiChartsAxis-tick': {
+                              stroke: '#4b5563',
+                            },
+                          }}
+                        />
+                      );
+                    })()}
                   </div>
                 </div>
 
-                {/* ─ Analysis Overview (Donut Chart) ─ */}
+                {/* ─ Analysis Overview (Pie Chart) ─ */}
                 <div className="rounded-2xl border border-gray-800/60 bg-gray-900/40 backdrop-blur-sm p-6">
                   <h4 className="text-sm font-semibold text-white mb-1">বিশ্লেষণ অবস্থা</h4>
                   <p className="text-[11px] text-gray-500 mb-5">Analysis Overview</p>
 
-                  {/* Donut chart with right-side legend */}
-                  <div className="flex items-center gap-8">
-                    {/* Donut */}
-                    <div className="relative w-36 h-36 shrink-0">
-                      {(() => {
-                        const total = Math.max(statistics.total_articles, 1);
-                        const neutralCount = statistics.processed_count - statistics.biased_count;
-                        const biasedCount = statistics.biased_count;
-                        const unprocessedCount = statistics.total_articles - statistics.processed_count;
-                        const neutralPct = (neutralCount / total) * 100;
-                        const biasedPct = (biasedCount / total) * 100;
-                        const unprocessedPct = (unprocessedCount / total) * 100;
-                        const circumference = 2 * Math.PI * 15.5; // ~97.39
-                        const neutralArc = (neutralPct / 100) * circumference;
-                        const biasedArc = (biasedPct / 100) * circumference;
-                        const unprocessedArc = (unprocessedPct / 100) * circumference;
-                        const gap = 0.8;
-                        return (
-                          <svg viewBox="0 0 36 36" className="w-full h-full" style={{ transform: 'rotate(-90deg)' }}>
-                            {/* Background track */}
-                            <circle cx="18" cy="18" r="15.5" fill="none" stroke="#1f2937" strokeWidth="4.5" />
-                            {/* Neutral (emerald) */}
-                            {neutralPct > 0 && (
-                              <circle cx="18" cy="18" r="15.5" fill="none"
-                                stroke="#10b981" strokeWidth="4.5"
-                                strokeDasharray={`${Math.max(neutralArc - gap, 0)} ${circumference}`}
-                                strokeDashoffset="0"
-                                strokeLinecap="round"
-                              />
-                            )}
-                            {/* Biased (red) */}
-                            {biasedPct > 0 && (
-                              <circle cx="18" cy="18" r="15.5" fill="none"
-                                stroke="#ef4444" strokeWidth="4.5"
-                                strokeDasharray={`${Math.max(biasedArc - gap, 0)} ${circumference}`}
-                                strokeDashoffset={`${-(neutralArc + gap / 2)}`}
-                                strokeLinecap="round"
-                              />
-                            )}
-                            {/* Unprocessed (gray) */}
-                            {unprocessedPct > 0 && (
-                              <circle cx="18" cy="18" r="15.5" fill="none"
-                                stroke="#6b7280" strokeWidth="4.5"
-                                strokeDasharray={`${Math.max(unprocessedArc - gap, 0)} ${circumference}`}
-                                strokeDashoffset={`${-(neutralArc + biasedArc + gap)}`}
-                                strokeLinecap="round"
-                              />
-                            )}
-                          </svg>
-                        );
-                      })()}
-                      <div className="absolute inset-0 flex flex-col items-center justify-center">
-                        <span className="text-2xl font-bold text-white leading-none">{statistics.total_articles}</span>
-                        <span className="text-[10px] text-gray-500 font-semibold tracking-wider mt-0.5">TOTAL</span>
-                      </div>
-                    </div>
+                  {/* MUI Pie Chart */}
+                  <div className="h-64">
+                    {(() => {
+                      const neutralCount = statistics.processed_count - statistics.biased_count;
+                      const biasedCount = statistics.biased_count;
+                      const unprocessedCount = statistics.total_articles - statistics.processed_count;
 
-                    {/* Legend */}
-                    <div className="flex-1 space-y-4">
-                      {[
-                        { label: 'Neutral', count: statistics.processed_count - statistics.biased_count, color: 'bg-emerald-500', pct: ((statistics.processed_count - statistics.biased_count) / Math.max(statistics.total_articles, 1) * 100) },
-                        { label: 'Biased', count: statistics.biased_count, color: 'bg-red-500', pct: (statistics.biased_count / Math.max(statistics.total_articles, 1) * 100) },
-                        { label: 'Unprocessed', count: statistics.total_articles - statistics.processed_count, color: 'bg-gray-500', pct: ((statistics.total_articles - statistics.processed_count) / Math.max(statistics.total_articles, 1) * 100) },
-                      ].map((item) => (
-                        <div key={item.label} className="flex items-center gap-3">
-                          <span className={`w-3 h-3 rounded-full ${item.color} shrink-0 shadow-sm`} />
-                          <div className="flex-1">
-                            <div className="flex items-baseline justify-between">
-                              <span className="text-sm font-medium text-gray-300">{item.label}</span>
-                              <span className="text-sm font-bold text-white">{item.count.toLocaleString()}</span>
-                            </div>
-                            <span className="text-[11px] text-gray-500">{item.pct.toFixed(1)}%</span>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
+                      // Only include slices that have count > 0
+                      const pieData = [
+                        ...(neutralCount > 0 ? [{ id: 0, value: neutralCount, label: `Neutral (${neutralCount})` }] : []),
+                        ...(biasedCount > 0 ? [{ id: 1, value: biasedCount, label: `Biased (${biasedCount})` }] : []),
+                        ...(unprocessedCount > 0 ? [{ id: 2, value: unprocessedCount, label: `Unprocessed (${unprocessedCount})` }] : []),
+                      ];
+
+                      const pieColors = [
+                        ...(neutralCount > 0 ? ['#00e676'] : []),
+                        ...(biasedCount > 0 ? ['#ff5252'] : []),
+                        ...(unprocessedCount > 0 ? ['#78909c'] : []),
+                      ];
+
+                      return (
+                        <PieChart
+                          colors={pieColors}
+                          series={[{
+                            data: pieData,
+                            arcLabel: (item) => {
+                              return item.value > 0 ? `${item.value}` : '';
+                            },
+                            arcLabelMinAngle: 5,
+                            innerRadius: 55,
+                            outerRadius: 90,
+                            paddingAngle: 3,
+                            cornerRadius: 5,
+                          }]}
+                          height={240}
+                          margin={{ top: 10, bottom: 10, left: 10, right: 140 }}
+                          slotProps={{
+                            legend: {},
+                          }}
+                          sx={{
+                            '& .MuiChartsLegend-series text': {
+                              fill: 'white !important',
+                              fontSize: '13px',
+                              fontWeight: '500',
+                            },
+                            '& .MuiChartsLegend-label': {
+                              fill: 'white !important',
+                              fontSize: '13px',
+                              fontWeight: '500',
+                            },
+                            '& .MuiChartsLegend-root text': {
+                              fill: 'white !important',
+                            },
+                            '& tspan': {
+                              fill: 'white !important',
+                            },
+                            '& .MuiChartsLegend-mark': {
+                              rx: 2,
+                            },
+                            '& .MuiPieArc-root': {
+                              stroke: '#0f172a',
+                              strokeWidth: 2,
+                            },
+                            '& .MuiChartsArcLabel-root': {
+                              fill: 'white',
+                              fontWeight: '700',
+                              fontSize: '14px',
+                            },
+                          }}
+                        />
+                      );
+                    })()}
                   </div>
 
                   {/* Progress bar */}
