@@ -697,19 +697,41 @@ async def update_scheduler(
     except Exception as e:
         logger.error(f"Update scheduler error: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Failed to update scheduler: {str(e)}")
+
+
+@router.post("/scheduler/toggle")
+async def toggle_scheduler(
+    current_user: User = Depends(require_admin)
+):
+    """Toggle scheduler on/off (Admin only). Pauses or resumes the APScheduler and syncs Redis state."""
+    try:
+        from app.services.scheduler import get_scheduler
+        from app.services.redis_scheduler import redis_scheduler_service
         
-        return {
-            "status": "scheduled",
-            "message": f"Test scraping scheduled in {minutes} minute(s)",
-            "scheduled_time": run_time.isoformat(),
-            "scheduled_time_bdt": (run_time + timedelta(hours=6)).strftime("%Y-%m-%d %I:%M %p BDT")
-        }
+        scheduler = get_scheduler()
+        
+        if scheduler._is_running:
+            # Pause scheduler
+            scheduler.scheduler.pause()
+            scheduler._is_running = False
+            redis_scheduler_service.stop()
+            return {
+                "running": False,
+                "message": "Scheduler paused successfully. No automatic scraping will occur until resumed."
+            }
+        else:
+            # Resume scheduler
+            scheduler.scheduler.resume()
+            scheduler._is_running = True
+            redis_scheduler_service.start()
+            return {
+                "running": True,
+                "message": "Scheduler resumed successfully. Automatic scraping will continue on schedule."
+            }
     
-    except RuntimeError as e:
-        raise HTTPException(status_code=503, detail=str(e))
     except Exception as e:
-        logger.error(f"Test run scheduling error: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Failed to schedule test run: {str(e)}")
+        logger.error(f"Toggle scheduler error: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to toggle scheduler: {str(e)}")
 
 
 @router.get("/scheduler/logs")

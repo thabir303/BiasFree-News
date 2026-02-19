@@ -11,6 +11,8 @@ const LoginPage: React.FC = () => {
     const [error, setError] = useState('');
     const [loading, setLoading] = useState(false);
     const [showResendVerification, setShowResendVerification] = useState(false);
+    const [resendSuccess, setResendSuccess] = useState('');
+    const [resendLoading, setResendLoading] = useState(false);
     
     const { signin } = useAuth();
     const navigate = useNavigate();
@@ -45,12 +47,16 @@ const LoginPage: React.FC = () => {
             return;
         }
         
+        setResendLoading(true);
         try {
-            const response = await authApi.resendVerification(email);
+            await authApi.resendVerification(email);
+            setResendSuccess('Verification email sent! Please check your inbox and click the verification link within 1 minute.');
             setError('');
-            alert(`Verification email sent! Token: ${response.verification_token}`);
+            setShowResendVerification(false);
         } catch (err: any) {
             setError(err.response?.data?.detail || 'Failed to resend verification email');
+        } finally {
+            setResendLoading(false);
         }
     };
 
@@ -81,11 +87,19 @@ const LoginPage: React.FC = () => {
                                     <button
                                         type="button"
                                         onClick={handleResendVerification}
-                                        className="mt-3 text-xs text-blue-400 hover:text-blue-300 underline"
+                                        disabled={resendLoading}
+                                        className="mt-3 text-xs text-blue-400 hover:text-blue-300 underline disabled:opacity-50"
                                     >
-                                        Resend verification email
+                                        {resendLoading ? 'Sending...' : 'Resend verification email'}
                                     </button>
                                 )}
+                            </div>
+                        )}
+
+                        {/* Resend Success Message */}
+                        {resendSuccess && (
+                            <div className="bg-green-500/20 border border-green-500/50 text-green-300 px-4 py-3 rounded-xl text-sm">
+                                <p>✅ {resendSuccess}</p>
                             </div>
                         )}
 
@@ -170,8 +184,17 @@ const LoginPage: React.FC = () => {
                         <div className="flex-1 border-t border-white/10"></div>
                     </div>
 
-                    {/* Sign Up Link */}
-                    <div className="text-center">
+                    {/* Forgot Password & Sign Up Links */}
+                    <div className="text-center space-y-3">
+                        <p className="text-sm text-gray-400">
+                            Forgot your password?{' '}
+                            <Link 
+                                to="/forgot-password" 
+                                className="text-pink-400 hover:text-pink-300 font-semibold transition"
+                            >
+                                Reset it here
+                            </Link>
+                        </p>
                         <p className="text-sm text-gray-400">
                             Don't have an account?{' '}
                             <Link 

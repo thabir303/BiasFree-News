@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
+import { authApi } from '../services/api';
 import { Mail, Lock, User, Eye, EyeOff, Check, X } from 'lucide-react';
 
 interface PasswordStrength {
@@ -21,6 +22,8 @@ const SignupPage: React.FC = () => {
     const [error, setError] = useState('');
     const [success, setSuccess] = useState('');
     const [loading, setLoading] = useState(false);
+    const [resendLoading, setResendLoading] = useState(false);
+    const [resendCooldown, setResendCooldown] = useState(0);
     const [passwordStrength, setPasswordStrength] = useState<PasswordStrength>({
         minLength: false,
         hasUpperCase: false,
@@ -30,6 +33,28 @@ const SignupPage: React.FC = () => {
     });
     
     const { signup } = useAuth();
+
+    // Resend cooldown timer
+    useEffect(() => {
+        if (resendCooldown > 0) {
+            const timer = setTimeout(() => setResendCooldown(resendCooldown - 1), 1000);
+            return () => clearTimeout(timer);
+        }
+    }, [resendCooldown]);
+
+    const handleResendVerification = async () => {
+        if (!email || resendCooldown > 0) return;
+        setResendLoading(true);
+        try {
+            await authApi.resendVerification(email);
+            setSuccess('New verification email sent! Please check your inbox and click the link within 1 minute.');
+            setResendCooldown(60); // 60 second cooldown
+        } catch (err: any) {
+            setError(err.response?.data?.detail || 'Failed to resend verification email');
+        } finally {
+            setResendLoading(false);
+        }
+    };
 
     // Check password strength
     useEffect(() => {
@@ -127,6 +152,22 @@ const SignupPage: React.FC = () => {
                                     A verification email has been sent to <span className="font-semibold">{email}</span>. 
                                     Please check your inbox and click the verification link to activate your account.
                                 </p>
+                                <p className="text-xs mt-2 text-amber-400">
+                                    ⏱️ The verification link expires in <strong>1 minute</strong>. If it expires, you can resend it.
+                                </p>
+                                <div className="mt-3 flex items-center gap-3">
+                                    <button
+                                        type="button"
+                                        onClick={handleResendVerification}
+                                        disabled={resendLoading || resendCooldown > 0}
+                                        className="text-xs bg-blue-500/20 border border-blue-500/40 text-blue-400 hover:bg-blue-500/30 px-3 py-1.5 rounded-lg transition disabled:opacity-50"
+                                    >
+                                        {resendLoading ? 'Sending...' : resendCooldown > 0 ? `Resend in ${resendCooldown}s` : 'Resend Verification Email'}
+                                    </button>
+                                    <Link to="/login" className="text-xs text-purple-400 hover:text-purple-300 underline">
+                                        Go to Login
+                                    </Link>
+                                </div>
                                 <p className="text-xs mt-3 text-green-400">
                                     💡 Tip: If you don't see the email, check your spam folder.
                                 </p>

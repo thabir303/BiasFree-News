@@ -64,6 +64,15 @@ async def lifespan(app: FastAPI):
     scheduler = get_scheduler()
     scheduler.start()
     logger.debug("Scheduler started - Daily scraping at 6:00 AM BDT")
+    
+    # Sync Redis scheduler state
+    try:
+        from app.services.redis_scheduler import redis_scheduler_service
+        redis_scheduler_service.start()
+        logger.debug("Redis scheduler state synced")
+    except Exception as e:
+        logger.warning(f"Could not sync Redis scheduler state: {e}")
+    
     logger.debug("=" * 80)
     
     yield
@@ -71,6 +80,11 @@ async def lifespan(app: FastAPI):
     # Shutdown
     logger.info("Shutting down BiasFree News API")
     scheduler.stop()
+    try:
+        from app.services.redis_scheduler import redis_scheduler_service
+        redis_scheduler_service.stop()
+    except Exception:
+        pass
     logger.info("Scheduler stopped")
 
 

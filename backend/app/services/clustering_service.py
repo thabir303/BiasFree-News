@@ -7,8 +7,10 @@ Detects when multiple newspapers cover the SAME event using:
   Stage 3: Content similarity (supporting signal — weighted 0.6)
   Stage 4: Combined similarity with Agglomerative Clustering
 
-Then generates extractive unified summaries using sumy (LSA + TextRank).
+Then generates AI-powered unified & debiased articles using OpenAI.
 """
+import asyncio
+import json
 import logging
 import re
 import numpy as np
@@ -22,6 +24,7 @@ from sentence_transformers import SentenceTransformer
 from sqlalchemy.orm import Session
 
 from app.database.models import Article, ArticleCluster
+from app.services.openai_service import OpenAIService
 
 logger = logging.getLogger(__name__)
 
@@ -132,7 +135,7 @@ class ClusteringService:
     5. Apply Agglomerative Clustering (complete linkage, distance_threshold)
     6. Post-filter: require ≥2 unique sources per cluster (cross-newspaper)
     7. Post-filter: verify keyword overlap (Jaccard ≥ 0.12)
-    8. Generate extractive unified summary via sumy (LSA + TextRank)
+    8. Generate AI-powered unified & debiased article via OpenAI
     9. Store ArticleCluster records
     """
 
@@ -446,7 +449,7 @@ class ClusteringService:
         logger.info(f"Clustering complete: {stats}")
         return stats
 
-    # ── Extractive summarisation via sumy ───────────────────────────
+    # ── AI-powered unified & debiased article generation ────────────
 
     def _generate_unified_summary(
         self,
@@ -455,136 +458,188 @@ class ClusteringService:
         sentences_count: int = 8,
     ) -> None:
         """
-        Generate a merged extractive summary for a cluster using sumy
-        (LSA + TextRank ensemble).
+        Generate a unified, debiased article for a cluster using OpenAI.
 
         Strategy:
-        - Combine all article texts into one mega-document
-        - Run LSA and TextRank separately
-        - Take union of top sentences from both, ranked by combined score
-        - Store as unified_content on the cluster record
-        - Use _pick_best_headline to set unified_headline
+        - Collect all source articles with their newspaper names
+        - Send to OpenAI with a prompt that asks for:
+          (a) A unified article combining facts from all sources
+          (b) Debiased language — neutral, balanced, no sensationalism
+          (c) A neutral headline
+        - Store unified_content, debiased_unified_content, and unified_headline
         """
-        from sumy.parsers.plaintext import PlaintextParser
-        from sumy.nlp.tokenizers import Tokenizer
-        from sumy.summarizers.lsa import LsaSummarizer
-        from sumy.summarizers.text_rank import TextRankSummarizer
-        from sumy.nlp.stemmers import Stemmer
-        from sumy.utils import get_stop_words
 
-        # ---- 1. Build mega-document with source markers ----
-        mega_parts: List[str] = []
+        # ---- 1. Build source articles payload ----
+        source_articles: List[Dict] = []
         for a in cluster_articles:
             content = (a.original_content or "").strip()
             if not content:
                 continue
-            # Light cleanup: remove reporter tags like "নিজস্ব প্রতিবেদক,"
+            # Light cleanup: remove reporter tags
             content = re.sub(
                 r"^(নিজস্ব প্রতিবেদক|অনলাইন ডেস্ক|স্টাফ রিপোর্টার|বিশেষ প্রতিনিধি|প্রকাশ:)[,।\s]*",
                 "",
                 content,
             )
-            mega_parts.append(content)
+            source_articles.append({
+                "source": a.source or "unknown",
+                "title": a.title or "",
+                "content": content[:3000],  # Cap per article to stay within token limits
+            })
 
-        if not mega_parts:
+        if not source_articles:
             return
 
-        mega_text = "\n".join(mega_parts)
-
-        # ---- 2. Parse with sumy (use English tokenizer — works for sentence splitting) ----
-        # Bengali doesn't have a dedicated sumy tokenizer, but the plaintext parser
-        # with "english" tokenizer still splits on "।" and "." correctly enough.
+        # ---- 2. Call OpenAI for unified + debiased article ----
         try:
-            parser = PlaintextParser.from_string(mega_text, Tokenizer("english"))
-        except Exception:
-            # Fallback: manual sentence split on Bengali danda
-            parser = PlaintextParser.from_string(
-                mega_text.replace("।", ". "), Tokenizer("english")
-            )
-
-        total_sentences = sum(len(p.sentences) for p in parser.document.paragraphs)
-        if total_sentences == 0:
+            result = self._call_openai_unified_debias(source_articles, cluster.category)
+        except Exception as e:
+            logger.error(f"Unified summary failed for cluster #{cluster.id}: {e}")
+            # Fallback: use best headline + concatenated first paragraphs
+            cluster.unified_headline = self._pick_best_headline(cluster_articles)
+            fallback_parts = []
+            for sa in source_articles:
+                first_para = sa["content"].split("\n")[0][:500]
+                if first_para:
+                    fallback_parts.append(first_para)
+            cluster.unified_content = " ".join(fallback_parts)
             return
 
-        # Adaptive sentence count: at least 5, at most 12, ~30% of original
-        target_count = max(5, min(sentences_count, int(total_sentences * 0.30), 12))
+        # ---- 3. Store results ----
+        unified_content = result.get("unified_article", "").strip()
+        headline = result.get("headline", "").strip()
 
-        # ---- 3. Run LSA ----
-        try:
-            lsa = LsaSummarizer()
-            # Use English stemmer as fallback (it at least won't crash)
-            lsa.stop_words = get_stop_words("english")
-            lsa_sentences = lsa(parser.document, target_count)
-        except Exception as e:
-            logger.debug(f"LSA failed, falling back to TextRank only: {e}")
-            lsa_sentences = []
+        if not unified_content:
+            # Fallback if AI returned empty
+            cluster.unified_headline = self._pick_best_headline(cluster_articles)
+            return
 
-        # ---- 4. Run TextRank ----
-        try:
-            tr = TextRankSummarizer()
-            tr.stop_words = get_stop_words("english")
-            tr_sentences = tr(parser.document, target_count)
-        except Exception as e:
-            logger.debug(f"TextRank failed, using LSA only: {e}")
-            tr_sentences = []
-
-        # ---- 5. Combine: union with score-based ranking ----
-        # Score each sentence: +1 for appearing in LSA, +1 for TextRank
-        sentence_scores: Dict[str, float] = {}
-        sentence_order: Dict[str, int] = {}
-
-        # Track original order for coherence
-        order_idx = 0
-        for para in parser.document.paragraphs:
-            for sent in para.sentences:
-                key = str(sent).strip()
-                if key and key not in sentence_order:
-                    sentence_order[key] = order_idx
-                    order_idx += 1
-
-        for rank, sent in enumerate(lsa_sentences):
-            key = str(sent).strip()
-            if not key:
-                continue
-            # Higher rank (earlier) → higher score
-            score = 1.0 + (target_count - rank) / target_count
-            sentence_scores[key] = sentence_scores.get(key, 0) + score
-
-        for rank, sent in enumerate(tr_sentences):
-            key = str(sent).strip()
-            if not key:
-                continue
-            score = 1.0 + (target_count - rank) / target_count
-            sentence_scores[key] = sentence_scores.get(key, 0) + score
-
-        if not sentence_scores:
-            # Absolute fallback: first N sentences
-            all_sents = []
-            for para in parser.document.paragraphs:
-                for sent in para.sentences:
-                    all_sents.append(str(sent).strip())
-            unified = " ".join(all_sents[:target_count])
-        else:
-            # Sort by score descending, then by original order for coherence
-            ranked = sorted(
-                sentence_scores.items(),
-                key=lambda x: (-x[1], sentence_order.get(x[0], 9999)),
-            )
-            top_sentences = [s for s, _ in ranked[:target_count]]
-
-            # Re-order by original document order for readability
-            top_sentences.sort(key=lambda s: sentence_order.get(s, 9999))
-            unified = " ".join(top_sentences)
-
-        # ---- 6. Store ----
-        cluster.unified_content = unified.strip()
-        cluster.unified_headline = self._pick_best_headline(cluster_articles)
+        cluster.unified_content = unified_content
+        cluster.debiased_unified_content = unified_content  # AI output is already debiased
+        cluster.unified_headline = headline or self._pick_best_headline(cluster_articles)
 
         logger.info(
-            f"  Unified summary for cluster #{cluster.id}: "
-            f"{len(unified.split())} words, {target_count} sentences "
-            f"(from {total_sentences} total)"
+            f" Unified+debiased article for cluster #{cluster.id}: "
+            f"{len(unified_content.split())} words, "
+            f"headline='{headline[:60]}…'"
         )
+
+    def _call_openai_unified_debias(
+        self,
+        source_articles: List[Dict],
+        category: Optional[str] = None,
+    ) -> Dict:
+        """
+        Call OpenAI to produce a unified, debiased article from multiple
+        newspaper sources.  Runs the async OpenAI call in a sync context.
+
+        Returns:
+            {"headline": str, "unified_article": str, "sources_used": list}
+        """
+        # Build the articles block for the prompt
+        articles_text = ""
+        for idx, sa in enumerate(source_articles, 1):
+            articles_text += (
+                f"\n--- উৎস {idx}: {sa['source']} ---\n"
+                f"শিরোনাম: {sa['title']}\n"
+                f"{sa['content']}\n"
+            )
+
+        category_hint = f"বিভাগ: {category}" if category else ""
+
+        system_prompt = """তুমি একজন নিরপেক্ষ বাংলা সংবাদ সম্পাদক। তোমাকে একই ঘটনা নিয়ে একাধিক পত্রিকার সংবাদ দেওয়া হবে।
+
+তোমার কাজ:
+1. সবগুলো উৎস থেকে তথ্য একত্রিত করে একটি একক, সম্পূর্ণ, নিরপেক্ষ (debiased) সংবাদ নিবন্ধ রচনা করো।
+2. নিবন্ধটি অবশ্যই নিরপেক্ষ ও ভারসাম্যপূর্ণ হতে হবে — কোনো পক্ষপাত, সংবেদনশীলতা, আবেগী ভাষা বা একপক্ষীয় বর্ণনা রাখা যাবে না।
+3. একটি নিরপেক্ষ, তথ্যভিত্তিক বাংলা শিরোনাম তৈরি করো।
+
+Debiasing নিয়ম:
+- রাজনৈতিকভাবে পক্ষপাতমূলক শব্দ বাদ দাও (যেমন: "ভয়াবহ", "নৃশংস", "জঘন্য" → "গুরুতর", "উদ্বেগজনক")
+- সংবেদনশীল বা আবেগী ভাষা নিরপেক্ষ ভাষায় পরিবর্তন করো
+- সব পক্ষের বক্তব্য সমানভাবে উপস্থাপন করো
+- অভিযোগকে অভিযোগ হিসেবেই উপস্থাপন করো, সত্য হিসেবে নয়
+- "দাবি করেছেন", "জানিয়েছেন", "অভিযোগ করেছেন" — এই ধরনের attribution ব্যবহার করো
+- কোনো নির্দিষ্ট পত্রিকার দৃষ্টিভঙ্গি প্রাধান্য দেওয়া যাবে না
+
+লেখার ধরন:
+- পেশাদার সংবাদ ভাষায় লেখো
+- তথ্যবহুল ও সুগঠিত অনুচ্ছেদে সাজাও
+- গুরুত্বপূর্ণ তথ্য আগে দাও (inverted pyramid)
+- উৎস পত্রিকার নাম উল্লেখ করার দরকার নেই, শুধু তথ্য একত্রিত করো
+
+শুধু valid JSON ফরম্যাটে উত্তর দাও:
+{
+  "headline": "নিরপেক্ষ বাংলা শিরোনাম",
+  "unified_article": "সম্পূর্ণ নিরপেক্ষ ও ভারসাম্যপূর্ণ বাংলা নিবন্ধ"
+}"""
+
+        user_prompt = f"""{category_hint}
+
+নিচের একাধিক পত্রিকার সংবাদ থেকে একটি একক নিরপেক্ষ (debiased) সংবাদ নিবন্ধ তৈরি করো:
+{articles_text}
+
+JSON ফরম্যাটে উত্তর দাও।"""
+
+        logger.info(
+            f"Calling OpenAI for unified+debiased article "
+            f"({len(source_articles)} sources, ~{len(user_prompt)} chars)"
+        )
+
+        # Run the sync OpenAI call via httpx (sync client) to avoid
+        # async event-loop conflicts within the scheduler context.
+        from openai import OpenAI
+        from app.config import settings as app_settings
+
+        sync_client = OpenAI(api_key=app_settings.openai_api_key)
+
+        kwargs = {
+            "model": app_settings.openai_model,
+            "messages": [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt},
+            ],
+        }
+
+        # Token limit — Bengali unified article needs generous room
+        max_tokens = min(6000, app_settings.openai_max_tokens)
+        if any(p in app_settings.openai_model.lower() for p in ["gpt-4o", "gpt-5", "o1"]):
+            kwargs["max_completion_tokens"] = max_tokens
+        else:
+            kwargs["max_tokens"] = max_tokens
+
+        logger.info(
+            f"OpenAI sync call: model={app_settings.openai_model}, "
+            f"max_tokens={max_tokens}"
+        )
+
+        response = sync_client.chat.completions.create(**kwargs)
+        raw_response = response.choices[0].message.content or ""
+
+        finish_reason = response.choices[0].finish_reason
+        if hasattr(response, "usage"):
+            logger.info(
+                f"OpenAI usage: {response.usage.total_tokens} tokens "
+                f"(prompt={response.usage.prompt_tokens}, "
+                f"completion={response.usage.completion_tokens}), "
+                f"finish_reason={finish_reason}"
+            )
+
+        if finish_reason == "length":
+            logger.warning("Unified article response was truncated!")
+
+        # Parse the JSON response
+        openai_service = OpenAIService()
+        json_str = openai_service._extract_json(raw_response)
+        result = json.loads(json_str)
+
+        logger.info(
+            f" Unified article generated: "
+            f"headline='{result.get('headline', '')[:50]}', "
+            f"article_length={len(result.get('unified_article', ''))} chars"
+        )
+
+        return result
 
     def _pick_best_headline(self, cluster_articles: List[Article]) -> str:
         """
@@ -630,6 +685,7 @@ class ClusteringService:
             "cluster_id": cluster.id,
             "unified_headline": cluster.unified_headline,
             "unified_content": cluster.unified_content,
+            "debiased_unified_content": cluster.debiased_unified_content,
             "article_count": len(cluster_articles),
         }
 

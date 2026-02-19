@@ -56,6 +56,24 @@ class CategoryPreferencesResponse(BaseModel):
     message: Optional[str] = None
 
 
+class ForgotPasswordRequest(BaseModel):
+    """Request to send password reset OTP."""
+    email: EmailStr = Field(..., description="User email address")
+
+
+class VerifyOtpRequest(BaseModel):
+    """Request to verify OTP."""
+    email: EmailStr = Field(..., description="User email address")
+    otp: str = Field(..., min_length=6, max_length=6, description="6-digit OTP")
+
+
+class ResetPasswordRequest(BaseModel):
+    """Request to reset password after OTP verification."""
+    email: EmailStr = Field(..., description="User email address")
+    otp: str = Field(..., min_length=6, max_length=6, description="6-digit OTP")
+    new_password: str = Field(..., min_length=6, description="New password (min 6 characters)")
+
+
 # ============================================
 # User Analysis Schemas
 # ============================================

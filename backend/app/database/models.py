@@ -32,6 +32,10 @@ class User(Base):
     token_expires_at = Column(DateTime, nullable=True)
     category_preferences = Column(JSON, nullable=True)  # Ordered list of category keys e.g. ["রাজনীতি", "বিশ্ব", ...]
     
+    # Password Reset OTP
+    reset_otp = Column(String(6), nullable=True)
+    reset_otp_expires_at = Column(DateTime, nullable=True)
+    
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     

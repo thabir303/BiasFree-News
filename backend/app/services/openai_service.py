@@ -121,10 +121,13 @@ class OpenAIService:
                 total_input_chars = len(system_prompt) + len(user_prompt)
                 estimated_input_tokens = total_input_chars // 2  # Conservative estimate for Bengali
                 
-                # For debiasing with 2000 char content, we need ~2500-3000 tokens for output
-                if "Rewrite this Bengali article" in system_prompt or "debiased_content" in system_prompt:
-                    # Debiasing: 2000 chars ≈ 1000 tokens, plus JSON overhead
-                    calculated_max_tokens = min(4000, self.max_tokens)  # Fixed cap for 2000 char content
+                # For debiasing / unified article generation — need more tokens
+                if ("Rewrite this Bengali article" in system_prompt 
+                    or "debiased_content" in system_prompt
+                    or "unified_article" in system_prompt
+                    or "নিরপেক্ষ" in system_prompt):
+                    # Unified/debiased article: Bengali text is token-heavy, need generous limit
+                    calculated_max_tokens = min(6000, self.max_tokens)
                 else:
                     # Bias detection and headline generation need less
                     calculated_max_tokens = min(2000, self.max_tokens)

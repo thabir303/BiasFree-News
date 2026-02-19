@@ -11,6 +11,7 @@ import ManualScrapingPage from './pages/ManualScrapingPage';
 import LoginPage from './pages/LoginPage';
 import SignupPage from './pages/SignupPage';
 import VerifyEmailPage from './pages/VerifyEmailPage';
+import ForgotPasswordPage from './pages/ForgotPasswordPage';
 import ProfilePage from './pages/ProfilePage';
 import AnalysisDetailPage from './pages/AnalysisDetailPage';
 import ClustersPage from './pages/ClustersPage';
@@ -33,6 +34,7 @@ function App() {
             <Route path="/login" element={<LoginPage />} />
             <Route path="/signup" element={<SignupPage />} />
             <Route path="/verify-email/:token" element={<VerifyEmailPage />} />
+            <Route path="/forgot-password" element={<ForgotPasswordPage />} />
 
             {/* Protected Routes - Authenticated Users */}
             <Route

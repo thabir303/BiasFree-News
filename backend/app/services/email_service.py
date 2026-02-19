@@ -300,6 +300,100 @@ class EmailService:
             return False
     
     @staticmethod
+    def send_password_reset_otp(
+        to_email: str,
+        username: str,
+        otp: str
+    ) -> bool:
+        """
+        Send password reset OTP to user.
+        """
+        try:
+            message = MIMEMultipart("alternative")
+            message["Subject"] = "🔑 Password Reset OTP - BiasFree News"
+            message["From"] = f"{settings.mail_from_name} <{settings.mail_from}>"
+            message["To"] = to_email
+            
+            html_content = f"""
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <meta charset="UTF-8">
+                <style>
+                    body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif; line-height: 1.6; color: #333; background: #f4f7fa; padding: 20px; }}
+                    .email-wrapper {{ max-width: 600px; margin: 0 auto; background: white; border-radius: 16px; overflow: hidden; box-shadow: 0 4px 20px rgba(0,0,0,0.08); }}
+                    .header {{ background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); padding: 40px 30px; text-align: center; }}
+                    .header h1 {{ color: white; font-size: 26px; font-weight: 700; margin: 0; }}
+                    .header p {{ color: rgba(255,255,255,0.9); font-size: 15px; margin-top: 8px; }}
+                    .content {{ padding: 40px 30px; }}
+                    .greeting {{ font-size: 20px; font-weight: 600; color: #2d3748; margin-bottom: 16px; }}
+                    .otp-box {{ text-align: center; margin: 30px 0; }}
+                    .otp-code {{ display: inline-block; font-size: 36px; font-weight: 800; letter-spacing: 10px; color: #f5576c; background: #fff0f3; padding: 20px 36px; border-radius: 14px; border: 2px dashed #f5576c; font-family: 'Courier New', monospace; }}
+                    .warning {{ background: #fff5f5; border-left: 4px solid #fc8181; padding: 14px 18px; border-radius: 8px; margin: 20px 0; font-size: 14px; color: #742a2a; }}
+                    .info {{ background: #ebf8ff; border-left: 4px solid #4299e1; padding: 14px 18px; border-radius: 8px; margin: 20px 0; font-size: 14px; color: #2c5282; }}
+                    .footer {{ background: #f7fafc; padding: 24px; text-align: center; border-top: 1px solid #e2e8f0; }}
+                    .footer p {{ color: #718096; font-size: 13px; margin: 4px 0; }}
+                </style>
+            </head>
+            <body>
+                <div class="email-wrapper">
+                    <div class="header">
+                        <h1>🔑 Password Reset</h1>
+                        <p>Your one-time verification code</p>
+                    </div>
+                    <div class="content">
+                        <div class="greeting">Hello {username}! 👋</div>
+                        <p>We received a request to reset your password for your <strong>BiasFree News</strong> account.</p>
+                        <p>Use the following OTP code to reset your password:</p>
+                        <div class="otp-box">
+                            <div class="otp-code">{otp}</div>
+                        </div>
+                        <div class="warning">
+                            <strong>⏰ This OTP expires in 10 minutes.</strong> Do not share this code with anyone.
+                        </div>
+                        <div class="info">
+                            <strong>🔒 Security:</strong> If you didn't request a password reset, please ignore this email. Your account is safe.
+                        </div>
+                    </div>
+                    <div class="footer">
+                        <p><strong>BiasFree News</strong></p>
+                        <p>© 2026 BiasFree News. All rights reserved.</p>
+                    </div>
+                </div>
+            </body>
+            </html>
+            """
+            
+            text_content = f"""Password Reset OTP - BiasFree News
+
+Hello {username},
+
+Your OTP code for password reset is: {otp}
+
+This code expires in 10 minutes.
+
+If you didn't request this, please ignore this email.
+
+- BiasFree News Team"""
+            
+            part1 = MIMEText(text_content, "plain")
+            part2 = MIMEText(html_content, "html")
+            message.attach(part1)
+            message.attach(part2)
+            
+            with smtplib.SMTP(settings.mail_server, settings.mail_port) as server:
+                server.starttls()
+                server.login(settings.mail_username, settings.mail_password)
+                server.send_message(message)
+            
+            logger.info(f"Password reset OTP sent to {to_email}")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Failed to send reset OTP to {to_email}: {str(e)}")
+            return False
+
+    @staticmethod
     def send_password_reset_email(
         to_email: str,
         username: str,

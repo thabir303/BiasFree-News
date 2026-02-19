@@ -1,16 +1,30 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { authApi, type UserAnalysis } from '../services/api';
-import { ChevronRight, Trash2, FileText } from 'lucide-react';
+import { authApi, api, type UserAnalysis, type SchedulerStatus } from '../services/api';
+import { useAuth } from '../contexts/AuthContext';
+import { ChevronRight, Trash2, FileText, Clock, Play, Pause, Settings, RefreshCw } from 'lucide-react';
 
 const DashboardPage = () => {
+  const { isAdmin } = useAuth();
   const [loading, setLoading] = useState(true);
   const [analyses, setAnalyses] = useState<UserAnalysis[]>([]);
   const [total, setTotal] = useState(0);
 
+  // Scheduler state (admin only)
+  const [schedulerStatus, setSchedulerStatus] = useState<SchedulerStatus | null>(null);
+  const [schedulerLoading, setSchedulerLoading] = useState(false);
+  const [scheduleHour, setScheduleHour] = useState(6);
+  const [scheduleMinute, setScheduleMinute] = useState(0);
+  const [schedulerMessage, setSchedulerMessage] = useState('');
+  const [schedulerError, setSchedulerError] = useState('');
+  const [toggleLoading, setToggleLoading] = useState(false);
+
   useEffect(() => {
     fetchAnalyses();
-  }, []);
+    if (isAdmin) {
+      fetchSchedulerStatus();
+    }
+  }, [isAdmin]);
 
   const fetchAnalyses = async () => {
     setLoading(true);
@@ -22,6 +36,51 @@ const DashboardPage = () => {
       console.error('Failed to fetch user analyses:', error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchSchedulerStatus = async () => {
+    try {
+      const status = await api.getSchedulerStatus();
+      setSchedulerStatus(status);
+      // Parse hour/minute from schedule string like "Daily at 06:00 BDT"
+      const match = status.schedule?.match(/(\d{2}):(\d{2})/);
+      if (match) {
+        setScheduleHour(parseInt(match[1]));
+        setScheduleMinute(parseInt(match[2]));
+      }
+    } catch (error) {
+      console.error('Failed to fetch scheduler status:', error);
+    }
+  };
+
+  const handleUpdateScheduler = async () => {
+    setSchedulerLoading(true);
+    setSchedulerMessage('');
+    setSchedulerError('');
+    try {
+      const result = await api.updateScheduler(scheduleHour, scheduleMinute);
+      setSchedulerMessage(result.message || 'Scheduler updated successfully!');
+      fetchSchedulerStatus();
+    } catch (error: any) {
+      setSchedulerError(error.response?.data?.detail || 'Failed to update scheduler');
+    } finally {
+      setSchedulerLoading(false);
+    }
+  };
+
+  const handleToggleScheduler = async () => {
+    setToggleLoading(true);
+    setSchedulerMessage('');
+    setSchedulerError('');
+    try {
+      const result = await api.toggleScheduler();
+      setSchedulerMessage(result.message);
+      fetchSchedulerStatus();
+    } catch (error: any) {
+      setSchedulerError(error.response?.data?.detail || 'Failed to toggle scheduler');
+    } finally {
+      setToggleLoading(false);
     }
   };
 
@@ -51,6 +110,147 @@ const DashboardPage = () => {
           <h1 className="text-4xl font-bold text-white mb-2">📊 Dashboard</h1>
           <p className="text-gray-400">Your personal analysis history</p>
         </div>
+
+        {/* Admin Scheduler Control */}
+        {isAdmin && (
+          <div className="bg-gray-900/50 backdrop-blur-sm rounded-xl border border-gray-800 p-6 mb-6">
+            <div className="flex items-center space-x-3 mb-6">
+              <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-amber-500 to-orange-500 flex items-center justify-center shadow-md">
+                <Settings className="w-5 h-5 text-white" />
+              </div>
+              <div>
+                <h2 className="text-xl font-bold text-white">Scheduler Control</h2>
+                <p className="text-xs text-gray-500">Manage automated daily scraping schedule</p>
+              </div>
+            </div>
+
+            {/* Current Status */}
+            {schedulerStatus && (
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+                <div className="bg-gray-800/50 rounded-lg p-4 border border-gray-700/50">
+                  <p className="text-xs text-gray-500 mb-1">Status</p>
+                  <div className="flex items-center gap-2">
+                    <div className={`w-2.5 h-2.5 rounded-full ${schedulerStatus.running ? 'bg-green-400 animate-pulse' : 'bg-red-400'}`} />
+                    <span className={`text-sm font-semibold ${schedulerStatus.running ? 'text-green-400' : 'text-red-400'}`}>
+                      {schedulerStatus.running ? 'Running' : 'Paused'}
+                    </span>
+                  </div>
+                  <button
+                    onClick={handleToggleScheduler}
+                    disabled={toggleLoading}
+                    className={`mt-2 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all disabled:opacity-50 ${
+                      schedulerStatus.running
+                        ? 'bg-red-500/20 text-red-400 hover:bg-red-500/30 border border-red-500/30'
+                        : 'bg-green-500/20 text-green-400 hover:bg-green-500/30 border border-green-500/30'
+                    }`}
+                  >
+                    {toggleLoading ? (
+                      <RefreshCw className="w-3 h-3 animate-spin" />
+                    ) : schedulerStatus.running ? (
+                      <Pause className="w-3 h-3" />
+                    ) : (
+                      <Play className="w-3 h-3" />
+                    )}
+                    {schedulerStatus.running ? 'Pause' : 'Resume'}
+                  </button>
+                </div>
+                <div className="bg-gray-800/50 rounded-lg p-4 border border-gray-700/50">
+                  <p className="text-xs text-gray-500 mb-1">Current Schedule</p>
+                  <p className="text-sm font-semibold text-white flex items-center gap-1.5">
+                    <Clock className="w-4 h-4 text-amber-400" />
+                    {schedulerStatus.schedule || 'Not set'}
+                  </p>
+                </div>
+                <div className="bg-gray-800/50 rounded-lg p-4 border border-gray-700/50">
+                  <p className="text-xs text-gray-500 mb-1">Next Run</p>
+                  <p className="text-sm font-semibold text-white">
+                    {schedulerStatus.next_run
+                      ? new Date(schedulerStatus.next_run).toLocaleString('en-US', {
+                          month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'
+                        })
+                      : 'N/A'}
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {/* Last Run Info */}
+            {schedulerStatus?.last_run && (
+              <div className="bg-gray-800/30 rounded-lg p-4 border border-gray-700/30 mb-6">
+                <p className="text-xs text-gray-500 mb-2 font-medium">Last Run</p>
+                <div className="flex items-center gap-4 text-sm">
+                  <span className={`px-2 py-0.5 rounded-full text-xs font-bold ${
+                    schedulerStatus.last_run.status === 'success' ? 'bg-green-500/20 text-green-400' :
+                    schedulerStatus.last_run.status === 'partial' ? 'bg-amber-500/20 text-amber-400' :
+                    'bg-red-500/20 text-red-400'
+                  }`}>
+                    {schedulerStatus.last_run.status?.toUpperCase()}
+                  </span>
+                  <span className="text-gray-400">
+                    {schedulerStatus.last_run.articles_scraped} articles scraped
+                  </span>
+                  {schedulerStatus.last_run.started_at && (
+                    <span className="text-gray-500 text-xs">
+                      {new Date(schedulerStatus.last_run.started_at).toLocaleString()}
+                    </span>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Update Schedule Form */}
+            <div className="flex flex-wrap items-end gap-4">
+              <div>
+                <label className="block text-xs text-gray-400 mb-1.5 font-medium">Hour (BDT, 0-23)</label>
+                <input
+                  type="number"
+                  min={0}
+                  max={23}
+                  value={scheduleHour}
+                  onChange={(e) => setScheduleHour(Math.min(23, Math.max(0, parseInt(e.target.value) || 0)))}
+                  className="w-20 px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white text-center focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent"
+                />
+              </div>
+              <div>
+                <label className="block text-xs text-gray-400 mb-1.5 font-medium">Minute (0-59)</label>
+                <input
+                  type="number"
+                  min={0}
+                  max={59}
+                  value={scheduleMinute}
+                  onChange={(e) => setScheduleMinute(Math.min(59, Math.max(0, parseInt(e.target.value) || 0)))}
+                  className="w-20 px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white text-center focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent"
+                />
+              </div>
+              <button
+                onClick={handleUpdateScheduler}
+                disabled={schedulerLoading}
+                className="inline-flex items-center gap-2 px-5 py-2 bg-gradient-to-r from-amber-500 to-orange-500 text-white rounded-lg font-semibold text-sm hover:from-amber-600 hover:to-orange-600 transition-all disabled:opacity-50"
+              >
+                {schedulerLoading ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Clock className="w-4 h-4" />}
+                {schedulerLoading ? 'Updating...' : 'Update Schedule'}
+              </button>
+              <button
+                onClick={fetchSchedulerStatus}
+                className="inline-flex items-center gap-1.5 px-4 py-2 bg-gray-800 text-gray-300 rounded-lg text-sm hover:bg-gray-700 transition border border-gray-700"
+              >
+                <RefreshCw className="w-3.5 h-3.5" /> Refresh
+              </button>
+            </div>
+
+            {/* Messages */}
+            {schedulerMessage && (
+              <div className="mt-4 bg-green-500/20 border border-green-500/50 text-green-300 px-4 py-2.5 rounded-lg text-sm">
+                {schedulerMessage}
+              </div>
+            )}
+            {schedulerError && (
+              <div className="mt-4 bg-red-500/20 border border-red-500/50 text-red-300 px-4 py-2.5 rounded-lg text-sm">
+                {schedulerError}
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Manual Analysis History */}
         <div className="bg-gray-900/50 backdrop-blur-sm rounded-xl border border-gray-800 p-6">

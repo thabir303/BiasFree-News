@@ -129,6 +129,21 @@ export const authApi = {
         return response.data;
     },
 
+    forgotPassword: async (email: string): Promise<{ message: string; success: boolean }> => {
+        const response = await authClient.post<{ message: string; success: boolean }>('/forgot-password', { email });
+        return response.data;
+    },
+
+    verifyOtp: async (email: string, otp: string): Promise<{ message: string; valid: boolean }> => {
+        const response = await authClient.post<{ message: string; valid: boolean }>('/verify-otp', { email, otp });
+        return response.data;
+    },
+
+    resetPassword: async (email: string, otp: string, new_password: string): Promise<{ message: string; success: boolean }> => {
+        const response = await authClient.post<{ message: string; success: boolean }>('/reset-password', { email, otp, new_password });
+        return response.data;
+    },
+
     getCategoryPreferences: async (): Promise<{ categories: string[] }> => {
         const response = await authClient.get<{ categories: string[] }>('/preferences');
         return response.data;
@@ -433,6 +448,12 @@ export const api = {
     // Update scheduler time (Admin only)
     updateScheduler: async (hour: number, minute: number): Promise<any> => {
         const response = await apiClient.post(`/scheduler/update?hour=${hour}&minute=${minute}`);
+        return response.data;
+    },
+
+    // Toggle scheduler on/off (Admin only)
+    toggleScheduler: async (): Promise<{ running: boolean; message: string }> => {
+        const response = await apiClient.post<{ running: boolean; message: string }>('/scheduler/toggle');
         return response.data;
     },
 
