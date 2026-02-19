@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { authApi } from '../services/api';
 import { CheckCircle, XCircle, Loader2 } from 'lucide-react';
@@ -9,8 +9,12 @@ const VerifyEmailPage: React.FC = () => {
     const [loading, setLoading] = useState(true);
     const [success, setSuccess] = useState(false);
     const [error, setError] = useState('');
+    const calledRef = useRef(false);
 
     useEffect(() => {
+        if (calledRef.current) return;   // prevent React StrictMode double-invoke
+        calledRef.current = true;
+
         const verifyEmail = async () => {
             if (!token) {
                 setError('Invalid verification link');
