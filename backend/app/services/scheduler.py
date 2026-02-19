@@ -159,6 +159,18 @@ class SchedulerService:
             logger.info("Scraping complete. Articles saved to database for manual processing.")
             total_processed = 0
             
+            # Run article clustering on newly scraped articles
+            try:
+                from app.services.clustering_service import ClusteringService
+                logger.info("Running article clustering on recent articles...")
+                clustering_service = ClusteringService(db)
+                cluster_stats = clustering_service.cluster_articles(days_back=1)
+                logger.info(f"Clustering results: {cluster_stats}")
+            except Exception as ce:
+                cluster_error = f"Clustering failed: {str(ce)}"
+                logger.error(cluster_error)
+                errors.append(cluster_error)
+            
             # Update log
             log.status = "success" if not errors else "partial"
             log.completed_at = datetime.utcnow()
@@ -289,6 +301,18 @@ class SchedulerService:
             logger.info("Manual scraping complete. Articles saved to database for manual bias analysis.")
             total_stats["total_processed"] = 0
             total_stats["processing"] = {"successful": 0, "total_processed": 0, "message": "Automatic processing disabled"}
+            
+            # Run clustering on recently scraped articles
+            try:
+                from app.services.clustering_service import ClusteringService
+                logger.info("Running article clustering after manual scraping...")
+                clustering_service = ClusteringService(db)
+                cluster_stats = clustering_service.cluster_articles(days_back=3)
+                total_stats["clustering"] = cluster_stats
+                logger.info(f"Clustering results: {cluster_stats}")
+            except Exception as ce:
+                logger.error(f"Post-scrape clustering failed: {str(ce)}")
+                total_stats["clustering"] = {"status": "failed", "error": str(ce)}
             
             return total_stats
         

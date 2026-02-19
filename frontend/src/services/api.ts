@@ -196,6 +196,34 @@ export interface Article {
     processed: boolean;
     processed_at: string | null;
     processing_error: string | null;
+    cluster_id: number | null;
+    cluster_info: ClusterInfo | null;
+}
+
+export interface MergedArticle {
+    id: number;
+    title: string;
+    source: string;
+    category: string | null;
+    url: string;
+    original_content: string;
+    is_biased: boolean;
+    bias_score: number;
+    processed: boolean;
+    scraped_at: string | null;
+    similarity_percent: number | null;
+}
+
+export interface ClusterInfo {
+    cluster_id: number;
+    cluster_label: string;
+    article_count: number;
+    avg_similarity: number | null;
+    sources: string[];
+    category: string | null;
+    unified_content: string | null;
+    unified_headline: string | null;
+    merged_articles: MergedArticle[];
 }
 
 export interface ChangeDetail {
@@ -228,6 +256,87 @@ export interface Newspaper {
     url?: string;
     language: string;
     enabled: boolean;
+}
+
+// ============================================
+// Cluster Types
+// ============================================
+
+export interface ClusterArticlePreview {
+    id: number;
+    title: string;
+    source: string;
+    is_biased: boolean | null;
+    bias_score: number | null;
+}
+
+export interface ArticleCluster {
+    id: number;
+    cluster_label: string;
+    representative_title: string | null;
+    article_count: number;
+    avg_similarity: number | null;
+    sources: string[];
+    category: string | null;
+    has_unified: boolean;
+    created_at: string;
+    article_previews: ClusterArticlePreview[];
+}
+
+export interface ClusterArticleDetail {
+    id: number;
+    title: string;
+    source: string;
+    category: string | null;
+    url: string;
+    original_content: string;
+    is_biased: boolean | null;
+    bias_score: number | null;
+    processed: boolean;
+    published_date: string | null;
+    scraped_at: string | null;
+}
+
+export interface PairwiseSimilarity {
+    article_a: number;
+    article_b: number;
+    similarity: number;
+}
+
+export interface ClusterDetail {
+    id: number;
+    cluster_label: string;
+    representative_title: string | null;
+    article_count: number;
+    avg_similarity: number | null;
+    sources: string[];
+    category: string | null;
+    unified_content: string | null;
+    unified_headline: string | null;
+    debiased_unified_content: string | null;
+    created_at: string;
+    articles: ClusterArticleDetail[];
+    pairwise_similarities: PairwiseSimilarity[];
+}
+
+export interface ClustersResponse {
+    clusters: ArticleCluster[];
+    total: number;
+    skip: number;
+    limit: number;
+}
+
+export interface ClusteringStats {
+    total_clusters: number;
+    total_articles_clustered: number;
+    total_articles_unclustered: number;
+    total_articles: number;
+    clustering_coverage: number;
+    avg_cluster_size: number;
+    multi_source_clusters: number;
+    single_source_clusters: number;
+    model: string;
+    similarity_threshold: number;
 }
 
 export interface UserAnalysis {
@@ -348,6 +457,48 @@ export const api = {
     // Process single article for bias detection
     processArticle: async (id: number): Promise<Article> => {
         const response = await apiClient.post<Article>(`/articles/${id}/process`);
+        return response.data;
+    },
+
+    // ============================================
+    // Cluster APIs
+    // ============================================
+
+    // Get list of clusters
+    getClusters: async (params?: {
+        skip?: number;
+        limit?: number;
+        category?: string;
+        min_articles?: number;
+    }): Promise<ClustersResponse> => {
+        const response = await apiClient.get<ClustersResponse>('/clusters', { params });
+        return response.data;
+    },
+
+    // Get cluster detail
+    getClusterDetail: async (id: number): Promise<ClusterDetail> => {
+        const response = await apiClient.get<ClusterDetail>(`/clusters/${id}`);
+        return response.data;
+    },
+
+    // Get clustering stats
+    getClusteringStats: async (): Promise<ClusteringStats> => {
+        const response = await apiClient.get<ClusteringStats>('/clusters/stats');
+        return response.data;
+    },
+
+    // Trigger clustering (admin only)
+    generateClusters: async (params?: {
+        days_back?: number;
+        re_cluster?: boolean;
+    }): Promise<any> => {
+        const response = await apiClient.post('/clusters/generate', null, { params });
+        return response.data;
+    },
+
+    // Debias unified cluster content
+    debiasUnifiedContent: async (clusterId: number): Promise<any> => {
+        const response = await apiClient.post(`/clusters/${clusterId}/debias-unified`);
         return response.data;
     },
 };

@@ -1,6 +1,27 @@
 import { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { api, type Article } from '../services/api';
+import { api, type Article, type MergedArticle } from '../services/api';
+
+const SOURCE_LABELS: Record<string, string> = {
+  prothom_alo: 'প্রথম আলো',
+  daily_star: 'Daily Star',
+  jugantor: 'যুগান্তর',
+  samakal: 'সমকাল',
+};
+
+const SOURCE_COLORS: Record<string, string> = {
+  prothom_alo: 'bg-orange-500',
+  daily_star: 'bg-sky-500',
+  jugantor: 'bg-rose-500',
+  samakal: 'bg-violet-500',
+};
+
+const SOURCE_TEXT_COLORS: Record<string, string> = {
+  prothom_alo: 'text-orange-400',
+  daily_star: 'text-sky-400',
+  jugantor: 'text-rose-400',
+  samakal: 'text-violet-400',
+};
 
 const ArticleDetailPage = () => {
   const { id } = useParams<{ id: string }>();
@@ -8,6 +29,7 @@ const ArticleDetailPage = () => {
   const [loading, setLoading] = useState(true);
   const [processing, setProcessing] = useState(false);
   const [viewMode, setViewMode] = useState<'split' | 'diff'>('split');
+  const [expandedMergedId, setExpandedMergedId] = useState<number | null>(null);
 
   useEffect(() => {
     if (id) {
@@ -282,6 +304,11 @@ const ArticleDetailPage = () => {
                     🔗 Source
                   </a>
                 )}
+                {article.cluster_id && article.cluster_info && (
+                  <span className="px-3 py-1 bg-violet-500/10 text-violet-400 border border-violet-500/30 rounded-full">
+                    🔗 Merged from {article.cluster_info.article_count} articles ({article.cluster_info.sources.length} sources)
+                  </span>
+                )}
               </div>
             </div>
 
@@ -499,6 +526,208 @@ const ArticleDetailPage = () => {
             <p className="text-sm text-gray-500 mt-4">
               💡 Hover over highlighted text to see detailed explanations
             </p>
+          </div>
+        )}
+
+        {/* ════════════════════════════════════════════════════════════
+            MERGED / UNIFIED ARTICLE SECTION
+            Shows when this article was clustered with similar articles
+            from different newspapers.
+           ════════════════════════════════════════════════════════════ */}
+        {article.cluster_info && (
+          <div id="merged-section" className="mt-10">
+            {/* Section Heading */}
+            <div className="flex items-center gap-3 mb-6">
+              <div className="w-1.5 h-10 rounded-full bg-gradient-to-b from-violet-500 to-fuchsia-500" />
+              <div>
+                <h2 className="text-2xl font-bold text-white">
+                  🔗 Merged Article
+                </h2>
+                <p className="text-sm text-gray-500 mt-0.5">
+                  {article.cluster_info.article_count} articles from{' '}
+                  {article.cluster_info.sources.length} different newspaper
+                  {article.cluster_info.sources.length > 1 ? 's' : ''} cover the same event
+                </p>
+              </div>
+            </div>
+
+            {/* Sources involved */}
+            <div className="flex flex-wrap gap-2 mb-5">
+              {article.cluster_info.sources.map((src) => (
+                <span
+                  key={src}
+                  className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium bg-gray-800/80 border border-gray-700`}
+                >
+                  <span className={`w-2 h-2 rounded-full ${SOURCE_COLORS[src] || 'bg-gray-500'}`} />
+                  <span className={SOURCE_TEXT_COLORS[src] || 'text-gray-300'}>
+                    {SOURCE_LABELS[src] || src}
+                  </span>
+                </span>
+              ))}
+              {article.cluster_info.avg_similarity && (
+                <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-medium bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                  📊 Avg Similarity: {(article.cluster_info.avg_similarity * 100).toFixed(1)}%
+                </span>
+              )}
+            </div>
+
+            {/* Unified Content Card */}
+            {article.cluster_info.unified_content && (
+              <div className="bg-gradient-to-br from-violet-500/5 to-fuchsia-500/5 border border-violet-500/20 rounded-2xl p-6 mb-6">
+                <div className="flex items-center gap-2 mb-4">
+                  <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-violet-500 to-fuchsia-500 flex items-center justify-center text-sm">
+                    ✨
+                  </div>
+                  <div>
+                    <h3 className="text-lg font-bold text-white">Unified Summary</h3>
+                    <p className="text-[11px] text-gray-500">
+                      Extractive summary generated from all {article.cluster_info.article_count} articles (LSA + TextRank)
+                    </p>
+                  </div>
+                </div>
+                {article.cluster_info.unified_headline && (
+                  <h4 className="text-base font-semibold text-violet-300 mb-3">
+                    {article.cluster_info.unified_headline}
+                  </h4>
+                )}
+                <div className="prose prose-invert max-w-none">
+                  <p className="text-gray-300 leading-relaxed whitespace-pre-wrap text-[15px]">
+                    {article.cluster_info.unified_content}
+                  </p>
+                </div>
+
+                {/* Analyze unified content for bias button */}
+                <div className="mt-5 pt-4 border-t border-violet-500/10">
+                  <button
+                    onClick={async () => {
+                      if (!article.cluster_info?.unified_content) return;
+                      try {
+                        const result = await api.fullProcess({
+                          content: article.cluster_info.unified_content,
+                          title: article.cluster_info.unified_headline || article.title || undefined,
+                        });
+                        alert(
+                          result.analysis.is_biased
+                            ? `⚠️ Bias Detected!\nScore: ${result.analysis.bias_score}%\n${result.analysis.summary}`
+                            : `✅ No significant bias detected.\n${result.analysis.summary}`
+                        );
+                      } catch (err) {
+                        console.error('Failed to analyze unified content:', err);
+                        alert('Bias analysis failed. Please try again.');
+                      }
+                    }}
+                    className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium bg-violet-500/10 text-violet-400 border border-violet-500/20 hover:bg-violet-500/20 hover:border-violet-500/40 transition-all"
+                  >
+                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                    </svg>
+                    Analyze Unified Article for Bias
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Merged Articles List */}
+            <div className="space-y-3">
+              <h3 className="text-base font-semibold text-gray-300 mb-3">
+                📰 Articles Merged Into This Cluster
+              </h3>
+
+              {article.cluster_info.merged_articles.map((merged) => {
+                const srcColor = SOURCE_COLORS[merged.source] || 'bg-gray-500';
+                const srcLabel = SOURCE_LABELS[merged.source] || merged.source;
+                const isExpanded = expandedMergedId === merged.id;
+
+                return (
+                  <div
+                    key={merged.id}
+                    className="rounded-xl border border-gray-800/60 bg-gray-900/40 backdrop-blur-sm overflow-hidden transition-all duration-300 hover:border-gray-700"
+                  >
+                    {/* Header Row */}
+                    <button
+                      onClick={() => setExpandedMergedId(isExpanded ? null : merged.id)}
+                      className="w-full flex items-center justify-between p-4 text-left transition-colors hover:bg-gray-800/30"
+                    >
+                      <div className="flex items-center gap-3 flex-1 min-w-0">
+                        <span className={`w-2.5 h-2.5 rounded-full ${srcColor} shrink-0`} />
+                        <div className="min-w-0 flex-1">
+                          <p className="text-sm font-semibold text-gray-100 truncate">
+                            {merged.title || 'Untitled'}
+                          </p>
+                          <p className="text-xs text-gray-500 mt-0.5">{srcLabel}</p>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-3 shrink-0 ml-3">
+                        {/* Similarity Badge */}
+                        {merged.similarity_percent !== null && (
+                          <span
+                            className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold ${
+                              merged.similarity_percent >= 80
+                                ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/20'
+                                : merged.similarity_percent >= 60
+                                ? 'bg-amber-500/15 text-amber-400 border border-amber-500/20'
+                                : 'bg-gray-500/15 text-gray-400 border border-gray-500/20'
+                            }`}
+                          >
+                            {merged.similarity_percent.toFixed(1)}% match
+                          </span>
+                        )}
+
+                        {/* Bias badge */}
+                        {merged.processed && merged.is_biased && (
+                          <span className="px-2 py-0.5 rounded-md text-[10px] font-semibold bg-red-500/10 text-red-400 border border-red-500/20">
+                            {merged.bias_score.toFixed(0)}% bias
+                          </span>
+                        )}
+                        {merged.processed && !merged.is_biased && (
+                          <span className="px-2 py-0.5 rounded-md text-[10px] font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                            Neutral
+                          </span>
+                        )}
+
+                        {/* Expand arrow */}
+                        <svg
+                          className={`w-4 h-4 text-gray-500 transition-transform duration-200 ${isExpanded ? 'rotate-180' : ''}`}
+                          fill="none"
+                          viewBox="0 0 24 24"
+                          stroke="currentColor"
+                        >
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                        </svg>
+                      </div>
+                    </button>
+
+                    {/* Expanded Content */}
+                    {isExpanded && (
+                      <div className="px-4 pb-4 pt-1 border-t border-gray-800/40">
+                        <p className="text-sm text-gray-400 leading-relaxed whitespace-pre-wrap mb-3">
+                          {merged.original_content}
+                        </p>
+                        <div className="flex items-center gap-3">
+                          <Link
+                            to={`/article/${merged.id}`}
+                            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-primary-400 bg-primary-500/10 border border-primary-500/20 hover:bg-primary-500/20 transition-all"
+                          >
+                            View Full Article →
+                          </Link>
+                          {merged.url && (
+                            <a
+                              href={merged.url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-medium text-gray-400 bg-gray-800 border border-gray-700 hover:bg-gray-700 transition-all"
+                            >
+                              🔗 Original Source
+                            </a>
+                          )}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
           </div>
         )}
       </div>

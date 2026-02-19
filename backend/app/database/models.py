@@ -2,7 +2,8 @@
 SQLAlchemy database models for storing articles and analysis results.
 """
 from datetime import datetime
-from sqlalchemy import Column, Integer, String, Text, DateTime, Boolean, Float, JSON, Enum, ForeignKey
+from sqlalchemy import Column, Integer, String, Text, DateTime, Boolean, Float, JSON, Enum, ForeignKey, LargeBinary
+from sqlalchemy.orm import relationship
 from sqlalchemy.ext.declarative import declarative_base
 import enum
 
@@ -72,6 +73,11 @@ class Article(Base):
     generated_headlines = Column(JSON, nullable=True)
     recommended_headline = Column(String(500), nullable=True)
     
+    # Clustering
+    cluster_id = Column(Integer, ForeignKey("article_clusters.id"), nullable=True, index=True)
+    embedding = Column(LargeBinary, nullable=True)  # numpy array stored as bytes
+    cluster = relationship("ArticleCluster", back_populates="articles")
+    
     # Metadata
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
@@ -99,6 +105,35 @@ class SchedulerLog(Base):
     
     def __repr__(self):
         return f"<SchedulerLog(id={self.id}, job={self.job_name}, status={self.status})>"
+
+
+class ArticleCluster(Base):
+    """Model for grouping similar articles about the same event."""
+    
+    __tablename__ = "article_clusters"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    cluster_label = Column(String(500), nullable=True)  # Auto-generated topic label from titles
+    representative_title = Column(String(500), nullable=True)  # Title of most representative article
+    article_count = Column(Integer, default=0)
+    avg_similarity = Column(Float, nullable=True)  # Average pairwise cosine similarity
+    sources = Column(JSON, nullable=True)  # List of unique newspaper sources in cluster
+    category = Column(String(50), nullable=True, index=True)  # Dominant category
+    
+    # Unified article (Feature 2 - to be filled later)
+    unified_content = Column(Text, nullable=True)
+    unified_headline = Column(String(500), nullable=True)
+    debiased_unified_content = Column(Text, nullable=True)
+    
+    # Timestamps
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    
+    # Relationship
+    articles = relationship("Article", back_populates="cluster", lazy="dynamic")
+    
+    def __repr__(self):
+        return f"<ArticleCluster(id={self.id}, label={self.cluster_label[:50] if self.cluster_label else 'N/A'}, count={self.article_count})>"
 
 
 class UserAnalysis(Base):

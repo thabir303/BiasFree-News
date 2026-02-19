@@ -311,7 +311,8 @@ async def get_articles(
                 "bias_score": article.bias_score if article.bias_score is not None else 0.0,
                 "total_changes": article.total_changes if article.total_changes else 0,
                 "processed_at": article.processed_at.isoformat() if article.processed_at else None,
-                "created_at": article.created_at.isoformat()
+                "created_at": article.created_at.isoformat(),
+                "cluster_id": article.cluster_id,
             })
         
         return {
@@ -330,8 +331,8 @@ async def get_articles(
 async def get_article(article_id: int, db: Session = Depends(get_db)):
     """
     Get detailed information about a specific article.
-    
-    - **article_id**: Article ID
+    If the article belongs to a cluster, includes the unified/merged content,
+    all sibling articles, and pairwise similarity percentages.
     """
     try:
         article = db.query(Article).filter(Article.id == article_id).first()
@@ -339,7 +340,7 @@ async def get_article(article_id: int, db: Session = Depends(get_db)):
         if not article:
             raise HTTPException(status_code=404, detail="Article not found")
         
-        return {
+        result = {
             "id": article.id,
             "title": article.title,
             "content": article.original_content,
@@ -362,8 +363,68 @@ async def get_article(article_id: int, db: Session = Depends(get_db)):
             "generated_headlines": article.generated_headlines,
             "recommended_headline": article.recommended_headline,
             "created_at": article.created_at.isoformat(),
-            "updated_at": article.updated_at.isoformat() if article.updated_at else None
+            "updated_at": article.updated_at.isoformat() if article.updated_at else None,
+            "cluster_id": article.cluster_id,
+            # Cluster/merge info — populated below if article is clustered
+            "cluster_info": None,
         }
+
+        # ── Populate cluster info if article belongs to a cluster ──
+        if article.cluster_id:
+            from app.database.models import ArticleCluster
+            import numpy as np
+            from sklearn.metrics.pairwise import cosine_similarity as cos_sim
+
+            cluster = db.query(ArticleCluster).filter(
+                ArticleCluster.id == article.cluster_id
+            ).first()
+
+            if cluster:
+                sibling_articles = db.query(Article).filter(
+                    Article.cluster_id == article.cluster_id
+                ).all()
+
+                # Compute pairwise similarities against this article
+                this_emb = None
+                if article.embedding:
+                    this_emb = np.frombuffer(article.embedding, dtype=np.float32).reshape(1, -1)
+
+                siblings_info = []
+                for sib in sibling_articles:
+                    if sib.id == article.id:
+                        continue  # skip self
+                    sim_pct = None
+                    if this_emb is not None and sib.embedding:
+                        sib_emb = np.frombuffer(sib.embedding, dtype=np.float32).reshape(1, -1)
+                        sim_pct = round(float(cos_sim(this_emb, sib_emb)[0][0]) * 100, 1)
+
+                    siblings_info.append({
+                        "id": sib.id,
+                        "title": sib.title,
+                        "source": sib.source,
+                        "category": sib.category,
+                        "url": sib.url,
+                        "original_content": sib.original_content[:500] + "..." if sib.original_content and len(sib.original_content) > 500 else sib.original_content,
+                        "is_biased": sib.is_biased if sib.is_biased is not None else False,
+                        "bias_score": sib.bias_score if sib.bias_score is not None else 0.0,
+                        "processed": sib.processed,
+                        "scraped_at": sib.scraped_at.isoformat() if sib.scraped_at else None,
+                        "similarity_percent": sim_pct,
+                    })
+
+                result["cluster_info"] = {
+                    "cluster_id": cluster.id,
+                    "cluster_label": cluster.cluster_label,
+                    "article_count": cluster.article_count,
+                    "avg_similarity": cluster.avg_similarity,
+                    "sources": cluster.sources or [],
+                    "category": cluster.category,
+                    "unified_content": cluster.unified_content,
+                    "unified_headline": cluster.unified_headline,
+                    "merged_articles": siblings_info,
+                }
+
+        return result
         
     except HTTPException:
         raise
@@ -993,3 +1054,181 @@ async def get_enhanced_processing_stats(db: Session = Depends(get_db)) -> dict[s
     except Exception as e:
         logger.error(f"Enhanced stats retrieval failed: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Stats retrieval failed: {str(e)}")
+
+
+# ============================================
+# Article Clustering Endpoints
+# ============================================
+from app.services.clustering_service import ClusteringService
+
+
+@router.get("/clusters")
+async def get_clusters(
+    db: Session = Depends(get_db),
+    skip: int = Query(0, ge=0),
+    limit: int = Query(20, ge=1, le=100),
+    category: Optional[str] = Query(None, description="Filter clusters by category"),
+    min_articles: int = Query(2, ge=2, le=50, description="Minimum articles in cluster"),
+):
+    """
+    Get list of article clusters with pagination and filtering.
+    Clusters group similar articles from different newspapers covering the same event.
+    """
+    try:
+        service = ClusteringService(db)
+        clusters, total = service.get_all_clusters(
+            skip=skip, limit=limit, category=category, min_articles=min_articles
+        )
+        return {
+            "clusters": clusters,
+            "total": total,
+            "skip": skip,
+            "limit": limit,
+        }
+    except Exception as e:
+        logger.error(f"Get clusters error: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to fetch clusters: {str(e)}")
+
+
+@router.get("/clusters/stats")
+async def get_clustering_stats(db: Session = Depends(get_db)):
+    """Get article clustering statistics."""
+    try:
+        service = ClusteringService(db)
+        return service.get_clustering_stats()
+    except Exception as e:
+        logger.error(f"Clustering stats error: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to fetch clustering stats: {str(e)}")
+
+
+@router.get("/clusters/{cluster_id}")
+async def get_cluster_detail(cluster_id: int, db: Session = Depends(get_db)):
+    """
+    Get detailed information about a specific cluster.
+    Includes all articles, pairwise similarities, and unified content (if generated).
+    """
+    try:
+        service = ClusteringService(db)
+        detail = service.get_cluster_detail(cluster_id)
+        if not detail:
+            raise HTTPException(status_code=404, detail="Cluster not found")
+        return detail
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Get cluster detail error: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to fetch cluster: {str(e)}")
+
+
+@router.post("/clusters/generate")
+async def generate_clusters(
+    background_tasks: BackgroundTasks,
+    days_back: int = Query(3, ge=1, le=30, description="How many days back to look for articles"),
+    re_cluster: bool = Query(False, description="Re-cluster all articles (removes existing clusters)"),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin)
+):
+    """
+    Trigger article clustering. Groups similar articles from different sources.
+    Uses paraphrase-multilingual-MiniLM-L12-v2 for semantic similarity.
+    
+    - **days_back**: How many days back to look for unclustered articles
+    - **re_cluster**: If True, removes existing clusters and re-clusters everything
+    """
+    try:
+        service = ClusteringService(db)
+        result = service.cluster_articles(days_back=days_back, re_cluster_all=re_cluster)
+        return {
+            "status": "completed",
+            "message": "Article clustering completed (multi-stage with extractive summarization)",
+            "statistics": result
+        }
+    except Exception as e:
+        logger.error(f"Cluster generation error: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Clustering failed: {str(e)}")
+
+
+@router.post("/clusters/{cluster_id}/regenerate-summary")
+async def regenerate_cluster_summary(
+    cluster_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+):
+    """
+    Regenerate extractive unified summary for a specific cluster.
+    Uses sumy (LSA + TextRank ensemble) — pure extractive, no API.
+    """
+    try:
+        service = ClusteringService(db)
+        result = service.regenerate_summary(cluster_id)
+        if result is None:
+            raise HTTPException(status_code=404, detail="Cluster not found")
+        if "error" in result:
+            raise HTTPException(status_code=400, detail=result["error"])
+        return result
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Regenerate summary error: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Summary regeneration failed: {str(e)}")
+
+
+@router.post("/clusters/{cluster_id}/debias-unified")
+async def debias_unified_content(
+    cluster_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_authenticated),
+):
+    """
+    Run bias detection and debiasing on a cluster's unified content.
+    Returns the debiased unified article.
+    """
+    try:
+        from app.database.models import ArticleCluster
+
+        cluster = db.query(ArticleCluster).filter(ArticleCluster.id == cluster_id).first()
+        if not cluster:
+            raise HTTPException(status_code=404, detail="Cluster not found")
+        if not cluster.unified_content:
+            raise HTTPException(status_code=400, detail="No unified content to debias")
+
+        bias_detector = BiasDetectorService()
+
+        # Step 1: Analyze for bias
+        analysis = await bias_detector.analyze_bias(
+            cluster.unified_content,
+            cluster.unified_headline
+        )
+
+        result = {
+            "cluster_id": cluster_id,
+            "is_biased": analysis.is_biased,
+            "bias_score": analysis.bias_score,
+            "bias_summary": analysis.summary,
+            "biased_terms": [t.model_dump() for t in analysis.biased_terms],
+            "debiased_content": None,
+            "changes": [],
+            "total_changes": 0,
+        }
+
+        # Step 2: Debias if biased
+        if analysis.is_biased:
+            debiased = await bias_detector.debias_article(
+                cluster.unified_content,
+                [t.model_dump() for t in analysis.biased_terms]
+            )
+            result["debiased_content"] = debiased.debiased_content
+            result["changes"] = [c.model_dump() for c in debiased.changes]
+            result["total_changes"] = debiased.total_changes
+
+            # Optionally store debiased content on the cluster
+            cluster.debiased_unified_content = debiased.debiased_content
+            db.commit()
+
+        return result
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Debias unified error: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Debiasing failed: {str(e)}")

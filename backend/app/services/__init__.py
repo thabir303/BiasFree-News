@@ -5,6 +5,7 @@ from .scraper import NewsScraper
 from .enhanced_scraper import EnhancedNewsScraper
 from .article_processor import ArticleProcessor
 from .scheduler import SchedulerService, get_scheduler
+from .clustering_service import ClusteringService
 
 __all__ = [
     "OpenAIService",
@@ -13,5 +14,6 @@ __all__ = [
     "EnhancedNewsScraper",
     "ArticleProcessor",
     "SchedulerService",
-    "get_scheduler"
+    "get_scheduler",
+    "ClusteringService"
 ]

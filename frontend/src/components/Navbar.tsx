@@ -11,6 +11,7 @@ const Navbar = () => {
   const navItems = [
     { path: '/', label: 'Analyze', icon: '🔍', protected: false },
     { path: '/articles', label: 'Articles', icon: '📰', protected: false },
+    { path: '/clusters', label: 'Clusters', icon: '🔗', protected: false },
     { path: '/dashboard', label: 'Dashboard', icon: '📊', protected: true, adminOnly: false },
     { path: '/scrape', label: 'Scrape', icon: '🌐', protected: true, adminOnly: true },
   ];

@@ -13,6 +13,8 @@ import SignupPage from './pages/SignupPage';
 import VerifyEmailPage from './pages/VerifyEmailPage';
 import ProfilePage from './pages/ProfilePage';
 import AnalysisDetailPage from './pages/AnalysisDetailPage';
+import ClustersPage from './pages/ClustersPage';
+import ClusterDetailPage from './pages/ClusterDetailPage';
 
 function App() {
   return (
@@ -26,6 +28,8 @@ function App() {
             <Route path="/articles" element={<ArticlesPage />} />
             <Route path="/articles/category/:categoryName" element={<CategoryArticlesPage />} />
             <Route path="/article/:id" element={<ArticleDetailPage />} />
+            <Route path="/clusters" element={<ClustersPage />} />
+            <Route path="/clusters/:id" element={<ClusterDetailPage />} />
             <Route path="/login" element={<LoginPage />} />
             <Route path="/signup" element={<SignupPage />} />
             <Route path="/verify-email/:token" element={<VerifyEmailPage />} />
