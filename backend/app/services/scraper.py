@@ -1132,6 +1132,375 @@ class SamakalScraper(NewspaperScraper):
             return None
 
 
+class IttefaqScraper(NewspaperScraper):
+    """Scraper for Daily Ittefaq (Bangla) - Category-based scraping."""
+
+    BASE_URL = "https://www.ittefaq.com.bd"
+
+    CATEGORY_MAP = {
+        'country':   'বাংলাদেশ',
+        'politics':  'রাজনীতি',
+        'world-news': 'বিশ্ব',
+        'opinion':   'মতামত',
+    }
+
+    def __init__(self, start_date: str, end_date: str):
+        super().__init__(start_date, end_date)
+        self._lock = threading.Lock()
+        self._seen_urls: set = set()
+
+    def scrape_articles(self) -> List[ScrapedArticle]:
+        logger.info("Starting Ittefaq category-based scraping...")
+        logger.info(f"Date range: {self.start_date.strftime('%Y-%m-%d')} to {self.end_date.strftime('%Y-%m-%d')}")
+        all_articles = []
+        for path, category in self.CATEGORY_MAP.items():
+            try:
+                articles = self._scrape_category(path, category)
+                all_articles.extend(articles)
+                logger.info(f"Ittefaq category '{category}': {len(articles)} articles")
+            except Exception as e:
+                logger.error(f"Failed to scrape Ittefaq category {category}: {str(e)}")
+        logger.info(f"Ittefaq: Scraped {len(all_articles)} total articles")
+        return all_articles
+
+    def _scrape_category(self, path: str, category: str) -> List[ScrapedArticle]:
+        articles = []
+        category_url = f"{self.BASE_URL}/{path}"
+        try:
+            response = self.make_request(category_url)
+            if not response:
+                return articles
+            soup = BeautifulSoup(response.content, 'lxml')
+            article_links = []
+            # Ittefaq article URLs: //www.ittefaq.com.bd/NNNNNN/slug
+            numeric_re = re.compile(r'/(\d{4,})/')
+            for link in soup.find_all('a', href=True):
+                href = link.get('href', '')
+                if not href:
+                    continue
+                # normalise protocol-relative URLs
+                if href.startswith('//'):
+                    href = 'https:' + href
+                elif href.startswith('/'):
+                    href = self.BASE_URL + href
+                if not href.startswith(self.BASE_URL):
+                    continue
+                rel = href[len(self.BASE_URL):]
+                if not numeric_re.search(rel):
+                    continue
+                with self._lock:
+                    if href not in self._seen_urls:
+                        self._seen_urls.add(href)
+                        article_links.append(href)
+
+            article_links = list(set(article_links))[:50]
+            logger.info(f"  Found {len(article_links)} article links for Ittefaq '{category}'")
+
+            with ThreadPoolExecutor(max_workers=3) as executor:
+                future_to_url = {
+                    executor.submit(self._scrape_article, url, category): url
+                    for url in article_links
+                }
+                for future in as_completed(future_to_url):
+                    try:
+                        article = future.result()
+                        if article:
+                            articles.append(article)
+                    except Exception as e:
+                        logger.debug(f"Failed to scrape Ittefaq article: {str(e)}")
+        except Exception as e:
+            logger.error(f"Failed to scrape Ittefaq category {category}: {str(e)}")
+        return articles
+
+    def _scrape_article(self, url: str, category: str) -> Optional[ScrapedArticle]:
+        import json as _json
+        response = self.make_request(url)
+        if not response:
+            return None
+        try:
+            soup = BeautifulSoup(response.content, 'lxml')
+
+            # Title
+            title = None
+            h1 = soup.find('h1')
+            if h1:
+                title = h1.get_text(strip=True)
+            if not title:
+                return None
+
+            # Date — prefer JSON-LD datePublished
+            published_date = None
+            for script in soup.find_all('script', type='application/ld+json'):
+                try:
+                    ld = _json.loads(script.string)
+                    if isinstance(ld, dict) and ld.get('datePublished'):
+                        dt_str = ld['datePublished']
+                        article_date = datetime.fromisoformat(dt_str.replace('Z', '+00:00'))
+                        if not self.is_within_date_range(article_date):
+                            return None
+                        published_date = article_date.strftime('%Y-%m-%d')
+                        break
+                except Exception:
+                    pass
+
+            # Fallback: meta tag
+            if not published_date:
+                meta = soup.find('meta', property='article:published_time')
+                if meta:
+                    try:
+                        article_date = datetime.fromisoformat(
+                            meta.get('content', '').replace('Z', '+00:00')
+                        )
+                        if not self.is_within_date_range(article_date):
+                            return None
+                        published_date = article_date.strftime('%Y-%m-%d')
+                    except Exception:
+                        pass
+
+            if not published_date:
+                published_date = datetime.now().strftime('%Y-%m-%d')
+
+            # Content
+            content_parts = []
+            content_selectors = [
+                'div.content_detail_each_group',
+                'div.content_detail_inner',
+                'div.content_detail_wraper',
+                'div.detail_widget2',
+                'div.article-content',
+                'div.story-content',
+            ]
+            for selector in content_selectors:
+                content_div = soup.select_one(selector)
+                if content_div:
+                    for p in content_div.find_all('p'):
+                        text = p.get_text(strip=True)
+                        if text and len(text) > 20:
+                            content_parts.append(text)
+                    if content_parts:
+                        break
+
+            if not content_parts:
+                container = soup.find('article') or soup.find('main')
+                if container:
+                    for p in container.find_all('p'):
+                        text = p.get_text(strip=True)
+                        if text and len(text) > 20:
+                            content_parts.append(text)
+
+            content = ' '.join(content_parts)
+            if not content or len(content) < 50:
+                return None
+            if len(content) > 2000:
+                content = content[:2000]
+
+            return ScrapedArticle(
+                title=title,
+                content=content,
+                url=url,
+                published_date=published_date,
+                source="ittefaq",
+                category=category,
+            )
+        except Exception as e:
+            logger.error(f"Failed to scrape Ittefaq article {url}: {str(e)}")
+            return None
+
+
+class NayaDigantaScraper(NewspaperScraper):
+    """Scraper for Daily Naya Diganta (Bangla) - Category-based scraping."""
+
+    BASE_URL = "https://dailynayadiganta.com"
+
+    # 4 target categories with their URL paths and Bengali labels
+    CATEGORY_MAP = {
+        'bangladesh/national': 'বাংলাদেশ',
+        'bangladesh/politics': 'রাজনীতি',
+        'international': 'বিশ্ব',
+        'opinions/editorial': 'মতামত',
+    }
+
+    def __init__(self, start_date: str, end_date: str):
+        super().__init__(start_date, end_date)
+        self._lock = threading.Lock()
+        self._seen_urls: set = set()
+
+    def scrape_articles(self) -> List[ScrapedArticle]:
+        """Scrape articles from Naya Diganta by category."""
+        logger.info("Starting Naya Diganta category-based scraping...")
+        logger.info(f"Date range: {self.start_date.strftime('%Y-%m-%d')} to {self.end_date.strftime('%Y-%m-%d')}")
+
+        all_articles = []
+
+        for path, category in self.CATEGORY_MAP.items():
+            try:
+                articles = self._scrape_category(path, category)
+                all_articles.extend(articles)
+                logger.info(f"Naya Diganta category '{category}': {len(articles)} articles")
+            except Exception as e:
+                logger.error(f"Failed to scrape Naya Diganta category {category}: {str(e)}")
+
+        logger.info(f"Naya Diganta: Scraped {len(all_articles)} total articles")
+        return all_articles
+
+    def _scrape_category(self, path: str, category: str) -> List[ScrapedArticle]:
+        """Scrape articles from a category page."""
+        articles = []
+        category_url = f"{self.BASE_URL}/{path}"
+
+        try:
+            response = self.make_request(category_url)
+            if not response:
+                return articles
+
+            soup = BeautifulSoup(response.content, 'lxml')
+            article_links = []
+
+            # Article URLs follow: /path/<hash>/ where hash is 6+ alphanumeric chars
+            article_id_re = re.compile(r'/[A-Za-z0-9]{6,}/$')
+            for link in soup.find_all('a', href=True):
+                href = link.get('href', '')
+                if not href:
+                    continue
+                # Must start with base URL or be a relative path matching the category
+                if href.startswith(self.BASE_URL):
+                    rel = href[len(self.BASE_URL):]
+                elif href.startswith('/'):
+                    rel = href
+                else:
+                    continue
+                # Must contain the category path and end with an article hash
+                if f'/{path}/' not in rel and not rel.startswith(f'/{path}/'):
+                    continue
+                if not article_id_re.search(rel):
+                    continue
+                full_url = href if href.startswith('http') else self.BASE_URL + rel
+                with self._lock:
+                    if full_url not in self._seen_urls:
+                        self._seen_urls.add(full_url)
+                        article_links.append(full_url)
+
+            article_links = list(set(article_links))[:50]
+            logger.info(f"  Found {len(article_links)} article links for Naya Diganta '{category}'")
+
+            with ThreadPoolExecutor(max_workers=3) as executor:
+                future_to_url = {
+                    executor.submit(self._scrape_article, url, category): url
+                    for url in article_links
+                }
+                for future in as_completed(future_to_url):
+                    try:
+                        article = future.result()
+                        if article:
+                            articles.append(article)
+                    except Exception as e:
+                        logger.debug(f"Failed to scrape Naya Diganta article: {str(e)}")
+
+        except Exception as e:
+            logger.error(f"Failed to scrape Naya Diganta category {category}: {str(e)}")
+
+        return articles
+
+    def _scrape_article(self, url: str, category: str) -> Optional[ScrapedArticle]:
+        """Scrape individual article from Naya Diganta."""
+        response = self.make_request(url)
+        if not response:
+            return None
+
+        try:
+            soup = BeautifulSoup(response.content, 'lxml')
+
+            # Title: h1 with class post-title or any h1
+            title = None
+            title_tag = soup.find('h1', class_=lambda c: c and 'post-title' in c)
+            if not title_tag:
+                title_tag = soup.find('h1')
+            if title_tag:
+                title = title_tag.get_text(strip=True)
+            if not title:
+                return None
+
+            # Date: <time> tag with ISO datetime in the 'title' attribute
+            published_date = None
+            time_tag = soup.find('time')
+            if time_tag:
+                # try title attribute first (ISO format), then datetime attribute
+                dt_str = time_tag.get('title') or time_tag.get('datetime')
+                if dt_str:
+                    try:
+                        article_date = datetime.fromisoformat(dt_str.replace('Z', '+00:00'))
+                        if not self.is_within_date_range(article_date):
+                            return None
+                        published_date = article_date.strftime('%Y-%m-%d')
+                    except Exception:
+                        published_date = None
+
+            # Fallback: meta tag
+            if not published_date:
+                meta_date = soup.find('meta', property='article:published_time')
+                if meta_date:
+                    try:
+                        article_date = datetime.fromisoformat(
+                            meta_date.get('content', '').replace('Z', '+00:00')
+                        )
+                        if not self.is_within_date_range(article_date):
+                            return None
+                        published_date = article_date.strftime('%Y-%m-%d')
+                    except Exception:
+                        published_date = None
+
+            if not published_date:
+                published_date = datetime.now().strftime('%Y-%m-%d')
+
+            # Content: div.post-body or div with richtext class
+            content_parts = []
+            content_selectors = [
+                'div.post-body',
+                'div.richtext',
+                'div.article-content',
+                'div.content-details',
+                'div.story-content',
+            ]
+            for selector in content_selectors:
+                content_div = soup.select_one(selector)
+                if content_div:
+                    for p in content_div.find_all('p'):
+                        text = p.get_text(strip=True)
+                        if text and len(text) > 20:
+                            content_parts.append(text)
+                    if content_parts:
+                        break
+
+            # Fallback: article or main tag
+            if not content_parts:
+                container = soup.find('article') or soup.find('main')
+                if container:
+                    for p in container.find_all('p'):
+                        text = p.get_text(strip=True)
+                        if text and len(text) > 20:
+                            content_parts.append(text)
+
+            content = ' '.join(content_parts)
+            if not content or len(content) < 50:
+                return None
+
+            if len(content) > 2000:
+                content = content[:2000]
+
+            return ScrapedArticle(
+                title=title,
+                content=content,
+                url=url,
+                published_date=published_date,
+                source="naya_diganta",
+                category=category,
+            )
+
+        except Exception as e:
+            logger.error(f"Failed to scrape Naya Diganta article {url}: {str(e)}")
+            return None
+
+
 class NewsScraper:
     """Main scraper class that coordinates all newspaper scrapers."""
     
@@ -1149,7 +1518,7 @@ class NewsScraper:
         Scrape articles from specified source within date range.
         
         Args:
-            source: Newspaper source (prothom_alo, jugantor, daily_star, dhaka_tribune, samakal)
+            source: Newspaper source (prothom_alo, jugantor, daily_star, dhaka_tribune, samakal, naya_diganta)
             start_date: Start date for scraping
             end_date: End date for scraping
         
@@ -1164,7 +1533,9 @@ class NewsScraper:
             "jugantor": JugantorScraper,
             "daily_star": DailyStarScraper,
             "dhaka_tribune": DhakaTribuneScraper,
-            "samakal": SamakalScraper
+            "samakal": SamakalScraper,
+            "naya_diganta": NayaDigantaScraper,
+            "ittefaq": IttefaqScraper,
         }
         
         scraper_class = scraper_map.get(source)

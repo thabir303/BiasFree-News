@@ -3,6 +3,8 @@ import { useState, useCallback } from 'react';
 export interface FilterState {
   source: string;
   is_biased: string;
+  date_from: string;
+  date_to: string;
   skip: number;
   limit: number;
 }
@@ -11,6 +13,8 @@ export const useArticleFilters = (initialLimit: number = 12) => {
   const [filters, setFilters] = useState<FilterState>({
     source: '',
     is_biased: '',
+    date_from: '',
+    date_to: '',
     skip: 0,
     limit: initialLimit,
   });
@@ -24,7 +28,7 @@ export const useArticleFilters = (initialLimit: number = 12) => {
   }, []);
 
   const handleClearAll = useCallback(() => {
-    setFilters((prev) => ({ source: '', is_biased: '', skip: 0, limit: prev.limit }));
+    setFilters((prev) => ({ source: '', is_biased: '', date_from: '', date_to: '', skip: 0, limit: prev.limit }));
   }, []);
 
   const handlePageChange = useCallback((direction: 'next' | 'prev') => {
@@ -39,8 +43,8 @@ export const useArticleFilters = (initialLimit: number = 12) => {
   }, []);
 
   const getActiveFiltersCount = useCallback(() => {
-    return [filters.source, filters.is_biased].filter(Boolean).length;
-  }, [filters.source, filters.is_biased]);
+    return [filters.source, filters.is_biased, filters.date_from, filters.date_to].filter(Boolean).length;
+  }, [filters.source, filters.is_biased, filters.date_from, filters.date_to]);
 
   const getCurrentPage = useCallback(() => {
     return Math.floor(filters.skip / filters.limit) + 1;

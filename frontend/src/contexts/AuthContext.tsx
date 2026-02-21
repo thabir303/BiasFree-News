@@ -70,12 +70,17 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         setUser(null);
     };
 
+    const updateUser = (updated: User) => {
+        setUser(updated);
+    };
+
     const value: AuthContextType = {
         user,
         token,
         signin,
         signup,
         logout,
+        updateUser,
         isAuthenticated: !!user && !!token,
         isAdmin: user?.role === 'admin',
         loading,

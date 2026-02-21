@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { authApi } from '../services/api';
-import { GripVertical, Save, CheckCircle, ArrowUp, ArrowDown, User, Mail, Shield, ListOrdered } from 'lucide-react';
+import { GripVertical, Save, CheckCircle, ArrowUp, ArrowDown, User, Mail, Shield, ListOrdered, Pencil, X, Check } from 'lucide-react';
 
 const CATEGORIES = [
   { key: 'রাজনীতি', label: 'রাজনীতি', sublabel: 'Politics', icon: '🏛️', gradient: 'from-blue-500 to-indigo-600' },
@@ -11,12 +11,19 @@ const CATEGORIES = [
 ];
 
 const ProfilePage = () => {
-  const { user } = useAuth();
+  const { user, updateUser } = useAuth();
   const [orderedCategories, setOrderedCategories] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [loading, setLoading] = useState(true);
   const [draggedIdx, setDraggedIdx] = useState<number | null>(null);
+
+  // Username change state
+  const [editingUsername, setEditingUsername] = useState(false);
+  const [newUsername, setNewUsername] = useState('');
+  const [usernameError, setUsernameError] = useState('');
+  const [usernameSaving, setUsernameSaving] = useState(false);
+  const [usernameSaved, setUsernameSaved] = useState(false);
 
   const fetchPreferences = useCallback(async () => {
     try {
@@ -87,6 +94,40 @@ const ProfilePage = () => {
     }
   };
 
+  const startEditUsername = () => {
+    setNewUsername(user?.username || '');
+    setUsernameError('');
+    setUsernameSaved(false);
+    setEditingUsername(true);
+  };
+
+  const cancelEditUsername = () => {
+    setEditingUsername(false);
+    setUsernameError('');
+    setNewUsername('');
+  };
+
+  const handleUsernameSave = async () => {
+    const trimmed = newUsername.trim();
+    if (!trimmed) { setUsernameError('Username cannot be empty.'); return; }
+    if (trimmed.length < 3) { setUsernameError('Username must be at least 3 characters.'); return; }
+    if (trimmed === user?.username) { setUsernameError('This is already your username.'); return; }
+
+    setUsernameSaving(true);
+    setUsernameError('');
+    try {
+      const updated = await authApi.updateUsername(trimmed);
+      updateUser(updated);
+      setEditingUsername(false);
+      setUsernameSaved(true);
+      setTimeout(() => setUsernameSaved(false), 3000);
+    } catch (err: any) {
+      setUsernameError(err.response?.data?.detail || 'Failed to update username.');
+    } finally {
+      setUsernameSaving(false);
+    }
+  };
+
   const getCategoryMeta = (key: string) => CATEGORIES.find(c => c.key === key);
 
   if (loading) {
@@ -131,14 +172,67 @@ const ProfilePage = () => {
           </h3>
           <div className="space-y-4">
             <div className="flex items-center gap-3">
-              <div className="w-14 h-14 rounded-full bg-gradient-to-br from-primary-500 to-emerald-500 flex items-center justify-center text-2xl shadow-md">
+              <div className="w-14 h-14 rounded-full bg-gradient-to-br from-primary-500 to-emerald-500 flex items-center justify-center text-2xl shadow-md shrink-0">
                 👤
               </div>
-              <div>
-                <p className="text-lg font-semibold text-white">{user?.username}</p>
+              <div className="flex-1 min-w-0">
+                {/* Username row */}
+                {editingUsername ? (
+                  <div className="space-y-1.5">
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="text"
+                        value={newUsername}
+                        onChange={(e) => { setNewUsername(e.target.value); setUsernameError(''); }}
+                        onKeyDown={(e) => { if (e.key === 'Enter') handleUsernameSave(); if (e.key === 'Escape') cancelEditUsername(); }}
+                        maxLength={50}
+                        autoFocus
+                        className="flex-1 bg-gray-800/80 border border-gray-700 focus:border-primary-500/60 focus:ring-2 focus:ring-primary-500/20 rounded-lg px-3 py-1.5 text-sm text-white outline-none transition-all"
+                        placeholder="New username"
+                      />
+                      <button
+                        onClick={handleUsernameSave}
+                        disabled={usernameSaving}
+                        className="p-1.5 rounded-lg bg-primary-500/20 border border-primary-500/40 text-primary-400 hover:bg-primary-500/30 disabled:opacity-50 transition-all"
+                        title="Save"
+                      >
+                        {usernameSaving
+                          ? <svg className="animate-spin h-3.5 w-3.5" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" /></svg>
+                          : <Check className="w-3.5 h-3.5" />
+                        }
+                      </button>
+                      <button
+                        onClick={cancelEditUsername}
+                        className="p-1.5 rounded-lg bg-gray-800/80 border border-gray-700 text-gray-400 hover:text-white hover:border-gray-600 transition-all"
+                        title="Cancel"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                    {usernameError && (
+                      <p className="text-[11px] text-red-400">{usernameError}</p>
+                    )}
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-2">
+                    <p className="text-lg font-semibold text-white truncate">{user?.username}</p>
+                    {usernameSaved && (
+                      <span className="inline-flex items-center gap-1 text-[11px] text-emerald-400 font-medium">
+                        <CheckCircle className="w-3 h-3" /> Saved
+                      </span>
+                    )}
+                    <button
+                      onClick={startEditUsername}
+                      className="ml-1 p-1 rounded-md text-gray-600 hover:text-gray-300 hover:bg-gray-800 transition-all"
+                      title="Change username"
+                    >
+                      <Pencil className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                )}
                 <div className="flex items-center gap-2 mt-0.5">
-                  <Mail className="w-3.5 h-3.5 text-gray-500" />
-                  <p className="text-sm text-gray-400">{user?.email}</p>
+                  <Mail className="w-3.5 h-3.5 text-gray-500 shrink-0" />
+                  <p className="text-sm text-gray-400 truncate">{user?.email}</p>
                 </div>
               </div>
             </div>

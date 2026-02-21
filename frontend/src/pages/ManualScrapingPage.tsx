@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { api, type Newspaper } from '../services/api';
+import DateRangePicker from '../components/DateRangePicker';
 
 const ManualScrapingPage = () => {
   const [startDate, setStartDate] = useState('');
@@ -9,6 +10,8 @@ const ManualScrapingPage = () => {
     'daily_star',
     'jugantor',
     'samakal',
+    'naya_diganta',
+    'ittefaq',
   ]);
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<any>(null);
@@ -17,11 +20,15 @@ const ManualScrapingPage = () => {
   const [jobStatus, setJobStatus] = useState<string>('');
   const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
+  const today = new Date().toISOString().split('T')[0]; // max date cap
+
   const newspapers: Newspaper[] = [
     { key: 'prothom_alo', name: 'Prothom Alo', base_url: 'https://www.prothomalo.com', language: 'bn', enabled: true },
     { key: 'daily_star', name: 'The Daily Star', base_url: 'https://bangla.thedailystar.net', language: 'en', enabled: true },
     { key: 'jugantor', name: 'Jugantor', base_url: 'https://www.jugantor.com', language: 'bn', enabled: true },
     { key: 'samakal', name: 'Samakal', base_url: 'https://samakal.com', language: 'bn', enabled: true },
+    { key: 'naya_diganta', name: 'Naya Diganta', base_url: 'https://dailynayadiganta.com', language: 'bn', enabled: true },
+    { key: 'ittefaq', name: 'Ittefaq', base_url: 'https://www.ittefaq.com.bd', language: 'bn', enabled: true },
   ];
 
   // Cleanup polling on unmount
@@ -147,30 +154,18 @@ const ManualScrapingPage = () => {
           {/* Date Range */}
           <div className="mb-6">
             <label className="block text-sm font-semibold text-gray-300 mb-3">
-              📅 Date Range (Optional)
+              📅 Date Range <span className="text-gray-500 font-normal">(Optional)</span>
             </label>
-            <div className="grid md:grid-cols-2 gap-4">
-              <div>
-                <label className="block text-xs text-gray-500 mb-2">Start Date</label>
-                <input
-                  type="date"
-                  value={startDate}
-                  onChange={(e) => setStartDate(e.target.value)}
-                  className="w-full px-4 py-3 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-primary-500"
-                />
-              </div>
-              <div>
-                <label className="block text-xs text-gray-500 mb-2">End Date</label>
-                <input
-                  type="date"
-                  value={endDate}
-                  onChange={(e) => setEndDate(e.target.value)}
-                  className="w-full px-4 py-3 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-primary-500"
-                />
-              </div>
-            </div>
-            <p className="text-xs text-gray-500 mt-2">
-              Leave empty to scrape the latest articles
+            <DateRangePicker
+              fromDate={startDate}
+              toDate={endDate}
+              onFromChange={setStartDate}
+              onToChange={setEndDate}
+              disabled={loading}
+              maxDate={today}
+            />
+            <p className="text-xs text-gray-600 mt-2">
+              Leave empty to scrape today's articles. Future dates are not allowed.
             </p>
           </div>
 
@@ -179,7 +174,7 @@ const ManualScrapingPage = () => {
             <label className="block text-sm font-semibold text-gray-300 mb-3">
               📰 Select Newspapers
             </label>
-            <div className="grid md:grid-cols-2 gap-3">
+            <div className="grid md:grid-cols-3 gap-3">
               {newspapers.map((newspaper) => (
                 <button
                   key={newspaper.key}

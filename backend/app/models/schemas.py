@@ -56,6 +56,11 @@ class CategoryPreferencesResponse(BaseModel):
     message: Optional[str] = None
 
 
+class UpdateUsernameRequest(BaseModel):
+    """Request to update username."""
+    new_username: str = Field(..., min_length=3, max_length=50, description="New unique username")
+
+
 class ForgotPasswordRequest(BaseModel):
     """Request to send password reset OTP."""
     email: EmailStr = Field(..., description="User email address")

@@ -262,7 +262,9 @@ async def get_articles(
     processed: Optional[bool] = Query(None, description="Filter by processing status"),
     biased: Optional[bool] = Query(None, alias="is_biased", description="Filter by bias status"),
     source: Optional[str] = Query(None, description="Filter by news source"),
-    category: Optional[str] = Query(None, description="Filter by category (রাজনীতি, বিশ্ব, মতামত, বাংলাদেশ)")
+    category: Optional[str] = Query(None, description="Filter by category (রাজনীতি, বিশ্ব, মতামত, বাংলাদেশ)"),
+    date_from: Optional[str] = Query(None, description="Filter articles published on or after this date (YYYY-MM-DD)"),
+    date_to: Optional[str] = Query(None, description="Filter articles published on or before this date (YYYY-MM-DD)")
 ):
     """
     Get articles with filtering and pagination.
@@ -273,6 +275,8 @@ async def get_articles(
     - **biased**: Filter by bias detection result
     - **source**: Filter by news source
     - **category**: Filter by article category
+    - **date_from**: Filter by published date (from, inclusive) — YYYY-MM-DD
+    - **date_to**: Filter by published date (to, inclusive) — YYYY-MM-DD
     """
     try:
         query = db.query(Article)
@@ -286,6 +290,18 @@ async def get_articles(
             query = query.filter(Article.source == source)
         if category:
             query = query.filter(Article.category == category)
+        if date_from:
+            try:
+                df = datetime.strptime(date_from, "%Y-%m-%d")
+                query = query.filter(Article.published_date >= df)
+            except ValueError:
+                raise HTTPException(status_code=400, detail="date_from must be YYYY-MM-DD")
+        if date_to:
+            try:
+                dt = datetime.strptime(date_to, "%Y-%m-%d").replace(hour=23, minute=59, second=59)
+                query = query.filter(Article.published_date <= dt)
+            except ValueError:
+                raise HTTPException(status_code=400, detail="date_to must be YYYY-MM-DD")
         
         # Get total count
         total = query.count()

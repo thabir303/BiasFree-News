@@ -19,6 +19,8 @@ const SOURCE_LABELS: Record<string, string> = {
   daily_star: 'Daily Star',
   jugantor: 'যুগান্তর',
   samakal: 'সমকাল',
+  naya_diganta: 'নয়া দিগন্ত',
+  ittefaq: 'ইত্তেফাক',
 };
 
 const SOURCE_COLORS: Record<string, string> = {
@@ -26,6 +28,8 @@ const SOURCE_COLORS: Record<string, string> = {
   daily_star: 'bg-sky-500',
   jugantor: 'bg-rose-500',
   samakal: 'bg-violet-500',
+  naya_diganta: 'bg-green-500',
+  ittefaq: 'bg-yellow-500',
 };
 
 interface CategoryData {
@@ -376,84 +380,96 @@ const ArticlesPage = () => {
                 {/* ─ Analysis Overview (Pie Chart) ─ */}
                 <div className="rounded-2xl border border-gray-800/60 bg-gray-900/40 backdrop-blur-sm p-6">
                   <h4 className="text-sm font-semibold text-white mb-1">বিশ্লেষণ অবস্থা</h4>
-                  <p className="text-[11px] text-gray-500 mb-5">Analysis Overview</p>
+                  <p className="text-[11px] text-gray-500 mb-4">Analysis Overview</p>
 
-                  {/* MUI Pie Chart */}
-                  <div className="h-64">
-                    {(() => {
-                      const neutralCount = statistics.processed_count - statistics.biased_count;
-                      const biasedCount = statistics.biased_count;
-                      const unprocessedCount = statistics.total_articles - statistics.processed_count;
+                  {/* MUI Pie Chart — Processed vs Unprocessed (always both visible) */}
+                  {(() => {
+                    const processedCount = statistics.processed_count;
+                    const unprocessedCount = statistics.total_articles - statistics.processed_count;
+                    const neutralCount = statistics.processed_count - statistics.biased_count;
+                    const biasedCount = statistics.biased_count;
+                    const total = processedCount + unprocessedCount;
 
-                      // Only include slices that have count > 0
-                      const pieData = [
-                        ...(neutralCount > 0 ? [{ id: 0, value: neutralCount, label: `Neutral (${neutralCount})` }] : []),
-                        ...(biasedCount > 0 ? [{ id: 1, value: biasedCount, label: `Biased (${biasedCount})` }] : []),
-                        ...(unprocessedCount > 0 ? [{ id: 2, value: unprocessedCount, label: `Unprocessed (${unprocessedCount})` }] : []),
-                      ];
+                    // Give analyzed slice a minimum 7% visual arc so it's always visible,
+                    // but labels/chips still show the real numbers.
+                    const MIN_VISUAL_FRAC = 0.07;
+                    const analyzedVisual = total > 0
+                      ? Math.max(processedCount, Math.round(total * MIN_VISUAL_FRAC))
+                      : 1;
+                    const pendingVisual = Math.max(total - analyzedVisual, 0);
 
-                      const pieColors = [
-                        ...(neutralCount > 0 ? ['#00e676'] : []),
-                        ...(biasedCount > 0 ? ['#ff5252'] : []),
-                        ...(unprocessedCount > 0 ? ['#78909c'] : []),
-                      ];
+                    // Real counts for tooltip/legend labels
+                    const realCounts: Record<number, number> = { 0: processedCount, 1: unprocessedCount };
 
-                      return (
-                        <PieChart
-                          colors={pieColors}
-                          series={[{
-                            data: pieData,
-                            arcLabel: (item) => {
-                              return item.value > 0 ? `${item.value}` : '';
-                            },
-                            arcLabelMinAngle: 5,
-                            innerRadius: 55,
-                            outerRadius: 90,
-                            paddingAngle: 3,
-                            cornerRadius: 5,
-                          }]}
-                          height={240}
-                          margin={{ top: 10, bottom: 10, left: 10, right: 140 }}
-                          slotProps={{
-                            legend: {},
-                          }}
-                          sx={{
-                            '& .MuiChartsLegend-series text': {
-                              fill: 'white !important',
-                              fontSize: '13px',
-                              fontWeight: '500',
-                            },
-                            '& .MuiChartsLegend-label': {
-                              fill: 'white !important',
-                              fontSize: '13px',
-                              fontWeight: '500',
-                            },
-                            '& .MuiChartsLegend-root text': {
-                              fill: 'white !important',
-                            },
-                            '& tspan': {
-                              fill: 'white !important',
-                            },
-                            '& .MuiChartsLegend-mark': {
-                              rx: 2,
-                            },
-                            '& .MuiPieArc-root': {
-                              stroke: '#0f172a',
-                              strokeWidth: 2,
-                            },
-                            '& .MuiChartsArcLabel-root': {
-                              fill: 'white',
-                              fontWeight: '700',
-                              fontSize: '14px',
-                            },
-                          }}
-                        />
-                      );
-                    })()}
-                  </div>
+                    const pieData = [
+                      { id: 0, value: analyzedVisual, label: `Analyzed (${processedCount})` },
+                      ...(pendingVisual > 0 ? [{ id: 1, value: pendingVisual, label: `Pending (${unprocessedCount})` }] : []),
+                    ];
+
+                    return (
+                      <>
+                        <div className="h-56">
+                          <PieChart
+                            colors={['#818cf8', '#1e293b']}
+                            series={[{
+                              data: pieData,
+                              // arc label and tooltip both use real counts
+                              arcLabel: (item) =>
+                                item.id === 0
+                                  ? (processedCount > 0 ? `${processedCount}` : '')
+                                  : (unprocessedCount > 0 ? `${unprocessedCount}` : ''),
+                              arcLabelMinAngle: 20,
+                              innerRadius: 52,
+                              outerRadius: 88,
+                              paddingAngle: 2,
+                              cornerRadius: 4,
+                              valueFormatter: (item: any) =>
+                                `${(realCounts[item.id as number] ?? item.value).toLocaleString()}`,
+                            }]}
+                            height={220}
+                            margin={{ top: 10, bottom: 10, left: 10, right: 150 }}
+                            sx={{
+                              '& text': { fill: '#ffffff !important', fontSize: '13px', fontFamily: 'inherit' },
+                              '& tspan': { fill: '#ffffff !important' },
+                              '& .MuiChartsLegend-series text': { fill: '#ffffff !important', fontWeight: '600', fontSize: '13px' },
+                              '& .MuiChartsLegend-label': { fill: '#ffffff !important' },
+                              '& .MuiChartsLegend-mark': { rx: 2 },
+                              '& .MuiPieArc-root': { stroke: '#0f172a', strokeWidth: 2 },
+                              '& .MuiChartsArcLabel-root': { fill: '#ffffff !important', fontWeight: '700', fontSize: '12px' },
+                            }}
+                          />
+                        </div>
+
+                        {/* Biased / Neutral breakdown — always visible as stat chips */}
+                        <div className="mt-3 flex gap-2 flex-wrap">
+                          <div className="flex items-center gap-2 flex-1 min-w-[120px] rounded-xl border border-red-500/25 bg-red-500/10 px-3.5 py-2.5">
+                            <span className="w-2.5 h-2.5 rounded-full bg-red-400 shrink-0" />
+                            <div className="min-w-0">
+                              <p className="text-[10px] text-red-400/70 uppercase tracking-wider font-medium leading-none mb-0.5">Biased</p>
+                              <p className="text-lg font-bold text-red-400 leading-none tabular-nums">{biasedCount.toLocaleString()}</p>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-2 flex-1 min-w-[120px] rounded-xl border border-emerald-500/25 bg-emerald-500/10 px-3.5 py-2.5">
+                            <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 shrink-0" />
+                            <div className="min-w-0">
+                              <p className="text-[10px] text-emerald-400/70 uppercase tracking-wider font-medium leading-none mb-0.5">Neutral</p>
+                              <p className="text-lg font-bold text-emerald-400 leading-none tabular-nums">{neutralCount.toLocaleString()}</p>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-2 flex-1 min-w-[120px] rounded-xl border border-slate-600/40 bg-slate-700/20 px-3.5 py-2.5">
+                            <span className="w-2.5 h-2.5 rounded-full bg-slate-500 shrink-0" />
+                            <div className="min-w-0">
+                              <p className="text-[10px] text-slate-400/70 uppercase tracking-wider font-medium leading-none mb-0.5">Pending</p>
+                              <p className="text-lg font-bold text-slate-400 leading-none tabular-nums">{unprocessedCount.toLocaleString()}</p>
+                            </div>
+                          </div>
+                        </div>
+                      </>
+                    );
+                  })()}
 
                   {/* Progress bar */}
-                  <div className="mt-6 pt-4 border-t border-gray-800/60">
+                  <div className="mt-4 pt-4 border-t border-gray-800/60">
                     <div className="flex justify-between mb-1.5">
                       <span className="text-[11px] text-gray-500">Processing progress</span>
                       <span className="text-[11px] font-bold text-gray-400">

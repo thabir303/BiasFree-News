@@ -144,6 +144,11 @@ export const authApi = {
         return response.data;
     },
 
+    updateUsername: async (new_username: string): Promise<User> => {
+        const response = await authClient.put<User>('/username', { new_username });
+        return response.data;
+    },
+
     getCategoryPreferences: async (): Promise<{ categories: string[] }> => {
         const response = await authClient.get<{ categories: string[] }>('/preferences');
         return response.data;
@@ -416,6 +421,8 @@ export const api = {
         processed?: boolean;
         skip?: number;
         limit?: number;
+        date_from?: string;
+        date_to?: string;
     }): Promise<ArticlesResponse> => {
         const response = await apiClient.get<ArticlesResponse>('/articles', { params });
         return response.data;

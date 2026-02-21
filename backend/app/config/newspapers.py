@@ -73,6 +73,34 @@ NEWSPAPER_CONFIGS: Dict[str, NewspaperConfig] = {
             "article_content": ".article-content",
             "article_date": ".publish-date"
         }
+    ),
+    "naya_diganta": NewspaperConfig(
+        name="নয়া দিগন্ত",
+        key="naya_diganta",
+        base_url="https://dailynayadiganta.com",
+        language="bengali",
+        enabled=True,
+        scraper_type="naya_diganta",
+        selectors={
+            "article_list": ".post-title",
+            "article_title": "h1.post-title",
+            "article_content": ".post-body",
+            "article_date": "time"
+        }
+    ),
+    "ittefaq": NewspaperConfig(
+        name="ইত্তেফাক",
+        key="ittefaq",
+        base_url="https://www.ittefaq.com.bd",
+        language="bengali",
+        enabled=True,
+        scraper_type="ittefaq",
+        selectors={
+            "article_list": ".content_detail_each_group",
+            "article_title": "h1",
+            "article_content": ".content_detail_each_group",
+            "article_date": "script[type='application/ld+json']"
+        }
     )
 }
 

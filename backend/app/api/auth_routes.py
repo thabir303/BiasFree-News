@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.database.database import get_db
-from app.models.schemas import UserSignup, UserSignin, TokenResponse, UserResponse, CategoryPreferencesRequest, CategoryPreferencesResponse, UserAnalysisCreate, UserAnalysisResponse, UserAnalysesListResponse, ForgotPasswordRequest, VerifyOtpRequest, ResetPasswordRequest
+from app.models.schemas import UserSignup, UserSignin, TokenResponse, UserResponse, CategoryPreferencesRequest, CategoryPreferencesResponse, UserAnalysisCreate, UserAnalysisResponse, UserAnalysesListResponse, ForgotPasswordRequest, VerifyOtpRequest, ResetPasswordRequest, UpdateUsernameRequest
 from app.services.auth_service import AuthService, get_current_user
 from app.services.email_service import email_service
 from app.database.models import User, UserAnalysis
@@ -377,6 +377,54 @@ async def reset_password(
         "message": "Password reset successfully! You can now sign in with your new password.",
         "success": True
     }
+
+
+@router.put("/username", response_model=UserResponse)
+async def update_username(
+    request: UpdateUsernameRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Update the authenticated user's username.
+
+    - **new_username**: New unique username (3–50 characters)
+
+    Admins can change their username through this same endpoint.
+    """
+    new_username = request.new_username.strip()
+
+    # Reject if same as current
+    if new_username == current_user.username:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="New username is the same as the current username."
+        )
+
+    # Check uniqueness (case-insensitive)
+    existing = db.query(User).filter(
+        User.username.ilike(new_username),
+        User.id != current_user.id
+    ).first()
+    if existing:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Username already taken. Please choose a different one."
+        )
+
+    user = db.query(User).filter(User.id == current_user.id).first()
+    user.username = new_username
+    db.commit()
+    db.refresh(user)
+
+    return UserResponse(
+        id=user.id,
+        username=user.username,
+        email=user.email,
+        role=user.role.value,
+        is_active=user.is_active,
+        category_preferences=user.category_preferences
+    )
 
 
 @router.get("/preferences", response_model=CategoryPreferencesResponse)

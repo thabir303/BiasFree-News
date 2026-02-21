@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 from app.database.models import Article
 from app.config.newspapers import get_newspaper_config, get_enabled_newspapers
 from app.config import settings
-from app.services.scraper import ProthomAloScraper, JugantorScraper, DailyStarScraper, DhakaTribuneScraper, SamakalScraper
+from app.services.scraper import ProthomAloScraper, JugantorScraper, DailyStarScraper, DhakaTribuneScraper, SamakalScraper, NayaDigantaScraper, IttefaqScraper
 from app.services.optimized_scraper import OptimizedProthomAloScraper, OptimizedJugantorScraper
 
 logger = logging.getLogger(__name__)
@@ -197,7 +197,9 @@ class EnhancedNewsScraper:
                 # Fallback to original for others (not optimized yet)
                 "daily_star": DailyStarScraper,
                 "dhaka_tribune": DhakaTribuneScraper,
-                "samakal": SamakalScraper
+                "samakal": SamakalScraper,
+                "naya_diganta": NayaDigantaScraper,
+                "ittefaq": IttefaqScraper,
             }
             
             scraper_class = scraper_map.get(config.key)

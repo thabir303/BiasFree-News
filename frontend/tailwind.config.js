@@ -6,6 +6,15 @@ export default {
   ],
   theme: {
     extend: {
+      keyframes: {
+        popoverIn: {
+          '0%':   { opacity: '0', transform: 'translateY(-6px) scale(0.97)' },
+          '100%': { opacity: '1', transform: 'translateY(0)     scale(1)' },
+        },
+      },
+      animation: {
+        'popover-in': 'popoverIn 0.15s ease-out forwards',
+      },
       colors: {
         primary: {
           50: '#f0fdf4',

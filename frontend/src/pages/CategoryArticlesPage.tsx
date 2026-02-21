@@ -17,6 +17,8 @@ const SOURCE_LABELS: Record<string, string> = {
   daily_star: 'Daily Star',
   jugantor: 'যুগান্তর',
   samakal: 'সমকাল',
+  naya_diganta: 'নয়া দিগন্ত',
+  ittefaq: 'ইত্তেফাক',
 };
 
 const SOURCE_COLORS: Record<string, string> = {
@@ -24,6 +26,8 @@ const SOURCE_COLORS: Record<string, string> = {
   daily_star: 'bg-sky-500',
   jugantor: 'bg-rose-500',
   samakal: 'bg-violet-500',
+  naya_diganta: 'bg-green-500',
+  ittefaq: 'bg-yellow-500',
 };
 
 /* ─── Skeleton ──────────────────────────────────── */
@@ -75,6 +79,8 @@ const CategoryArticlesPage = () => {
       if (filters.is_biased !== '') {
         params.is_biased = filters.is_biased === 'true';
       }
+      if (filters.date_from) params.date_from = filters.date_from;
+      if (filters.date_to) params.date_to = filters.date_to;
       const response = await api.getArticles(params);
       setArticles(response.articles);
       setTotal(response.total);
