@@ -193,6 +193,37 @@ export const authApi = {
 };
 
 // ============================================
+// Admin API
+// ============================================
+
+export interface AdminUser {
+    id: number;
+    username: string;
+    email: string;
+    role: 'admin' | 'user';
+    is_active: boolean;
+    is_verified: boolean;
+    created_at: string | null;
+}
+
+export interface AdminUsersResponse {
+    total: number;
+    users: AdminUser[];
+}
+
+export const adminApi = {
+    listUsers: async (params?: { skip?: number; limit?: number }): Promise<AdminUsersResponse> => {
+        const response = await authClient.get<AdminUsersResponse>('/admin/users', { params });
+        return response.data;
+    },
+
+    deleteUser: async (userId: number): Promise<{ message: string }> => {
+        const response = await authClient.delete<{ message: string }>(`/admin/users/${userId}`);
+        return response.data;
+    },
+};
+
+// ============================================
 // Article Processing API
 // ============================================
 

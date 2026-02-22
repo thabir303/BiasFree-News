@@ -613,3 +613,87 @@ async def delete_user_analysis(
     
     db.delete(analysis)
     db.commit()
+
+
+# ============================================
+# Admin User Management Endpoints
+# ============================================
+
+@router.get("/admin/users")
+async def admin_list_users(
+    skip: int = 0,
+    limit: int = 50,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    List all registered users. Admin only.
+    """
+    from app.database.models import UserRole
+    if current_user.role != UserRole.ADMIN:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Admin access required."
+        )
+    
+    total = db.query(User).count()
+    users = (
+        db.query(User)
+        .order_by(User.id.asc())
+        .offset(skip)
+        .limit(limit)
+        .all()
+    )
+    
+    return {
+        "total": total,
+        "users": [
+            {
+                "id": u.id,
+                "username": u.username,
+                "email": u.email,
+                "role": u.role.value,
+                "is_active": u.is_active,
+                "is_verified": u.is_verified,
+                "created_at": u.created_at.isoformat() if u.created_at else None,
+            }
+            for u in users
+        ]
+    }
+
+
+@router.delete("/admin/users/{user_id}", status_code=status.HTTP_200_OK)
+async def admin_delete_user(
+    user_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Permanently delete a user by ID. Admin only.
+    The deleted user will need to sign up again to access the platform.
+    Admins cannot delete themselves.
+    """
+    from app.database.models import UserRole
+    if current_user.role != UserRole.ADMIN:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Admin access required."
+        )
+    
+    if user_id == current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="You cannot delete your own admin account."
+        )
+    
+    target_user = db.query(User).filter(User.id == user_id).first()
+    if not target_user:
+        raise HTTPException(status_code=404, detail="User not found.")
+    
+    # Delete related analyses first (cascade not set)
+    db.query(UserAnalysis).filter(UserAnalysis.user_id == user_id).delete()
+    
+    db.delete(target_user)
+    db.commit()
+    
+    return {"message": f"User '{target_user.username}' has been permanently deleted. They will need to sign up again to access the platform."}

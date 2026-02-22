@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { api, authApi, type Article, type Statistics } from '../services/api';
 import { ChevronDown, BarChart3 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
+import { useTheme } from '../contexts/ThemeContext';
 import ArticleIcon from '../../public/icons/ArticleIcon'
 import { BarChart } from '@mui/x-charts/BarChart';
 import { PieChart } from '@mui/x-charts/PieChart'; 
@@ -67,6 +68,9 @@ const StatSkeleton = () => (
 /* ─── Main Component ────────────────────────────────────── */
 const ArticlesPage = () => {
   const { isAuthenticated } = useAuth();
+  const { isDark } = useTheme();
+  const chartTextColor = isDark ? '#ffffff' : '#1e293b';
+  const chartAxisColor = isDark ? '#4b5563' : '#94a3b8';
   const [categoryData, setCategoryData] = useState<Record<string, CategoryData>>({});
   const [processingIds, setProcessingIds] = useState<Set<number>>(new Set());
   const [initialLoading, setInitialLoading] = useState(true);
@@ -357,18 +361,21 @@ const ArticlesPage = () => {
                           margin={{ top: 10, bottom: 30, left: 40, right: 10 }}
                           sx={{
                             '& .MuiChartsAxis-tickLabel': {
-                              fill: '#ffffff !important',
+                              fill: `${chartTextColor} !important`,
                               fontSize: '12px',
                               fontWeight: '500',
                             },
+                            '& .MuiChartsAxis-tickLabel tspan': {
+                              fill: `${chartTextColor} !important`,
+                            },
                             '& .MuiChartsAxis-label': {
-                              fill: '#ffffff !important',
+                              fill: `${chartTextColor} !important`,
                             },
                             '& .MuiChartsAxis-line': {
-                              stroke: '#4b5563',
+                              stroke: chartAxisColor,
                             },
                             '& .MuiChartsAxis-tick': {
-                              stroke: '#4b5563',
+                              stroke: chartAxisColor,
                             },
                           }}
                         />
@@ -410,7 +417,7 @@ const ArticlesPage = () => {
                       <>
                         <div className="h-56">
                           <PieChart
-                            colors={['#818cf8', '#1e293b']}
+                            colors={isDark ? ['#818cf8', '#1e293b'] : ['#818cf8', '#e2e8f0']}
                             series={[{
                               data: pieData,
                               // arc label and tooltip both use real counts
@@ -429,13 +436,14 @@ const ArticlesPage = () => {
                             height={220}
                             margin={{ top: 10, bottom: 10, left: 10, right: 150 }}
                             sx={{
-                              '& text': { fill: '#ffffff !important', fontSize: '13px', fontFamily: 'inherit' },
-                              '& tspan': { fill: '#ffffff !important' },
-                              '& .MuiChartsLegend-series text': { fill: '#ffffff !important', fontWeight: '600', fontSize: '13px' },
-                              '& .MuiChartsLegend-label': { fill: '#ffffff !important' },
+                              '& text': { fill: `${chartTextColor} !important`, fontSize: '13px', fontFamily: 'inherit' },
+                              '& tspan': { fill: `${chartTextColor} !important` },
+                              '& .MuiChartsLegend-series text': { fill: `${chartTextColor} !important`, fontWeight: '600', fontSize: '13px' },
+                              '& .MuiChartsLegend-series tspan': { fill: `${chartTextColor} !important` },
+                              '& .MuiChartsLegend-label': { fill: `${chartTextColor} !important` },
                               '& .MuiChartsLegend-mark': { rx: 2 },
-                              '& .MuiPieArc-root': { stroke: '#0f172a', strokeWidth: 2 },
-                              '& .MuiChartsArcLabel-root': { fill: '#ffffff !important', fontWeight: '700', fontSize: '12px' },
+                              '& .MuiPieArc-root': { stroke: isDark ? '#0f172a' : '#ffffff', strokeWidth: 2 },
+                              '& .MuiChartsArcLabel-root': { fill: `${chartTextColor} !important`, fontWeight: '700', fontSize: '12px' },
                             }}
                           />
                         </div>
