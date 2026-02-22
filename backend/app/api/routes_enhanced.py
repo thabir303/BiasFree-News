@@ -3,7 +3,7 @@ Enhanced API routes with database integration and scheduler control.
 """
 import logging
 import asyncio
-from typing import List, Optional, Dict, Any
+from typing import Annotated, Any
 from datetime import date, datetime, timedelta
 from fastapi import APIRouter, HTTPException, Request, Depends, Query, BackgroundTasks
 from sqlalchemy.orm import Session
@@ -16,12 +16,12 @@ from app.models.schemas import (
     HeadlineResponse,
     FullProcessResponse
 )
-from app.database.database import get_db
+from app.database.database import get_db, DB
 from app.database.models import Article, SchedulerLog, User
 from app.services.bias_detector import BiasDetectorService
 from app.services.scheduler import get_scheduler
 from app.services.article_processor import ArticleProcessor
-from app.services.auth_service import require_admin, require_authenticated, get_current_user
+from app.services.auth_service import require_admin, require_authenticated, get_current_user, AdminUser, AuthenticatedUser
 from app.config import settings
 from app.config.newspapers import get_all_newspaper_keys
 
@@ -42,7 +42,7 @@ bias_detector = BiasDetectorService()
 async def analyze_article(
     request: Request,
     article: ArticleInput,
-    current_user: User = Depends(require_authenticated)
+    current_user: AuthenticatedUser
 ) -> BiasAnalysisResponse:
     """
     Analyze article for bias detection.
@@ -66,7 +66,7 @@ async def analyze_article(
 async def debias_article(
     request: Request,
     article: ArticleInput,
-    current_user: User = Depends(require_authenticated)
+    current_user: AuthenticatedUser
 ) -> DebiasResponse:
     """
     Remove bias from article content and generate neutral version.
@@ -108,7 +108,7 @@ async def debias_article(
 async def full_process(
     request: Request,
     article: ArticleInput,
-    current_user: User = Depends(require_authenticated)
+    current_user: AuthenticatedUser
 ) -> FullProcessResponse:
     """
     Complete bias-free processing: analyze, debias, and generate headline.
@@ -141,13 +141,13 @@ async def full_process(
 @router.post("/scrape")
 async def scrape_articles(
     background_tasks: BackgroundTasks,
-    newspapers: Optional[List[str]] = Query(None, description="Specific newspapers to scrape"),
-    start_date: Optional[date] = Query(None, description="Start date (YYYY-MM-DD)"),
-    end_date: Optional[date] = Query(None, description="End date (YYYY-MM-DD)"),
+    db: DB,
+    current_user: AdminUser,
+    newspapers: list[str] | None = Query(None, description="Specific newspapers to scrape"),
+    start_date: date | None = Query(None, description="Start date (YYYY-MM-DD)"),
+    end_date: date | None = Query(None, description="End date (YYYY-MM-DD)"),
     max_articles: int = Query(50, ge=1, le=500, description="Maximum articles per newspaper"),
     process_immediately: bool = Query(False, description="Process articles immediately after scraping"),
-    db: Session = Depends(get_db),
-    current_user: User = Depends(require_admin)
 ):
     """
     Scrape articles from newspapers and optionally process them.
@@ -212,11 +212,11 @@ async def scrape_articles(
 
 @router.post("/scrape/manual")
 async def manual_scrape(
-    sources: Optional[List[str]] = Query(None, alias="sources[]"),
-    start_date: Optional[str] = Query(None),
-    end_date: Optional[str] = Query(None),
-    db: Session = Depends(get_db),
-    current_user: User = Depends(require_admin)
+    db: DB,
+    current_user: AdminUser,
+    sources: list[str] | None = Query(None, alias="sources[]"),
+    start_date: str | None = Query(None),
+    end_date: str | None = Query(None),
 ):
     """
     Manual scraping endpoint for on-demand article collection.
@@ -256,15 +256,15 @@ async def manual_scrape(
 
 @router.get("/articles")
 async def get_articles(
-    db: Session = Depends(get_db),
+    db: DB,
     skip: int = Query(0, ge=0),
     limit: int = Query(10, ge=1, le=100),
-    processed: Optional[bool] = Query(None, description="Filter by processing status"),
-    biased: Optional[bool] = Query(None, alias="is_biased", description="Filter by bias status"),
-    source: Optional[str] = Query(None, description="Filter by news source"),
-    category: Optional[str] = Query(None, description="Filter by category (রাজনীতি, বিশ্ব, মতামত, বাংলাদেশ)"),
-    date_from: Optional[str] = Query(None, description="Filter articles published on or after this date (YYYY-MM-DD)"),
-    date_to: Optional[str] = Query(None, description="Filter articles published on or before this date (YYYY-MM-DD)")
+    processed: bool | None = Query(None, description="Filter by processing status"),
+    biased: bool | None = Query(None, alias="is_biased", description="Filter by bias status"),
+    source: str | None = Query(None, description="Filter by news source"),
+    category: str | None = Query(None, description="Filter by category (রাজনীতি, বিশ্ব, মতামত, বাংলাদেশ)"),
+    date_from: str | None = Query(None, description="Filter articles published on or after this date (YYYY-MM-DD)"),
+    date_to: str | None = Query(None, description="Filter articles published on or before this date (YYYY-MM-DD)")
 ):
     """
     Get articles with filtering and pagination.
@@ -344,7 +344,7 @@ async def get_articles(
 
 
 @router.get("/articles/{article_id}")
-async def get_article(article_id: int, db: Session = Depends(get_db)):
+async def get_article(article_id: int, db: DB):
     """
     Get detailed information about a specific article.
     If the article belongs to a cluster, includes the unified/merged content,
@@ -452,8 +452,8 @@ async def get_article(article_id: int, db: Session = Depends(get_db)):
 @router.post("/articles/{article_id}/process")
 async def process_article_endpoint(
     article_id: int,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(require_authenticated)
+    db: DB,
+    current_user: AuthenticatedUser
 ):
     """
     Process a single unprocessed article for bias detection and debiasing.
@@ -540,8 +540,8 @@ async def process_article_endpoint(
 @router.post("/articles/{article_id}/reprocess")
 async def reprocess_article(
     article_id: int,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(require_admin)
+    db: DB,
+    current_user: AdminUser
 ):
     """
     Reprocess a specific article (useful after fixing bugs).
@@ -582,9 +582,9 @@ async def reprocess_article(
 
 @router.post("/articles/reprocess-all-biased")
 async def reprocess_all_biased_articles(
-    db: Session = Depends(get_db),
+    db: DB,
+    current_user: AdminUser,
     limit: int = Query(50, ge=1, le=200, description="Max articles to reprocess"),
-    current_user: User = Depends(require_admin)
 ):
     """
     Re-process all biased articles that have 0 changes.
@@ -630,8 +630,8 @@ async def reprocess_all_biased_articles(
 
 @router.get("/scheduler/status")
 async def get_scheduler_status(
-    db: Session = Depends(get_db),
-    current_user: User = Depends(require_authenticated)
+    db: DB,
+    current_user: AuthenticatedUser
 ):
     """Get scheduler status, recent job history, and last run details."""
     try:
@@ -654,9 +654,9 @@ async def get_scheduler_status(
 
 @router.post("/scheduler/test-run")
 async def schedule_test_run(
+    db: DB,
+    current_user: AdminUser,
     minutes: int = Query(1, ge=1, le=60, description="Minutes from now (1-60)"),
-    db: Session = Depends(get_db),
-    current_user: User = Depends(require_admin)
 ):
     """Schedule a one-time test scraping run after specified minutes."""
     try:
@@ -677,9 +677,9 @@ async def schedule_test_run(
 
 @router.post("/scheduler/update")
 async def update_scheduler(
+    current_user: AdminUser,
     hour: int = Query(..., ge=0, le=23, description="Hour (0-23) in BDT"),
     minute: int = Query(..., ge=0, le=59, description="Minute (0-59)"),
-    current_user: User = Depends(require_admin)
 ):
     """Update the scheduler configuration (Admin only)."""
     try:
@@ -717,7 +717,7 @@ async def update_scheduler(
 
 @router.post("/scheduler/toggle")
 async def toggle_scheduler(
-    current_user: User = Depends(require_admin)
+    current_user: AdminUser
 ):
     """Toggle scheduler on/off (Admin only). Pauses or resumes the APScheduler and syncs Redis state."""
     try:
@@ -752,9 +752,9 @@ async def toggle_scheduler(
 
 @router.get("/scheduler/logs")
 async def get_scheduler_logs(
-    db: Session = Depends(get_db),
+    db: DB,
+    current_user: AuthenticatedUser,
     limit: int = Query(10, ge=1, le=50),
-    current_user: User = Depends(require_authenticated)
 ):
     """Get recent scheduler job logs."""
     try:
@@ -808,8 +808,8 @@ async def get_newspapers():
 
 @router.get("/statistics")
 async def get_statistics(
-    db: Session = Depends(get_db),
-    current_user: User = Depends(require_authenticated)
+    db: DB,
+    current_user: AuthenticatedUser
 ):
     """Get overall statistics about scraped and processed articles."""
     try:
@@ -853,7 +853,7 @@ from app.services.enhanced_article_processor import EnhancedArticleProcessor
 @limiter.limit(f"{settings.rate_limit_per_minute}/minute")
 async def analyze_articles_batch(
     request: BatchArticleInput,
-    db: Session = Depends(get_db)
+    db: DB
 ) -> BatchBiasAnalysisResponse:
     """
     Analyze multiple articles for bias in a single LLM call with TOON format optimization.
@@ -910,9 +910,9 @@ async def analyze_articles_batch(
 
 @router.post("/enhanced/process-scraped-batch", response_model=EnhancedProcessingStats)
 async def process_scraped_articles_batch(
+    db: DB,
     max_articles: int = Query(20, ge=1, le=100, description="Maximum articles to process"),
     use_enhanced: bool = Query(True, description="Use enhanced TOON-based processing"),
-    db: Session = Depends(get_db)
 ) -> EnhancedProcessingStats:
     """
     Process scraped articles from database in optimized batches with TOON format.
@@ -1028,7 +1028,7 @@ async def toon_format_demo() -> dict[str, Any]:
 
 
 @router.get("/enhanced/stats")
-async def get_enhanced_processing_stats(db: Session = Depends(get_db)) -> dict[str, Any]:
+async def get_enhanced_processing_stats(db: DB) -> dict[str, Any]:
     """
     Get enhanced processing statistics including TOON format usage and token savings.
     
@@ -1102,10 +1102,10 @@ from app.services.clustering_service import ClusteringService
 
 @router.get("/clusters")
 async def get_clusters(
-    db: Session = Depends(get_db),
+    db: DB,
     skip: int = Query(0, ge=0),
     limit: int = Query(20, ge=1, le=100),
-    category: Optional[str] = Query(None, description="Filter clusters by category"),
+    category: str | None = Query(None, description="Filter clusters by category"),
     min_articles: int = Query(2, ge=2, le=50, description="Minimum articles in cluster"),
 ):
     """
@@ -1129,7 +1129,7 @@ async def get_clusters(
 
 
 @router.get("/clusters/stats")
-async def get_clustering_stats(db: Session = Depends(get_db)):
+async def get_clustering_stats(db: DB):
     """Get article clustering statistics."""
     try:
         service = ClusteringService(db)
@@ -1140,7 +1140,7 @@ async def get_clustering_stats(db: Session = Depends(get_db)):
 
 
 @router.get("/clusters/{cluster_id}")
-async def get_cluster_detail(cluster_id: int, db: Session = Depends(get_db)):
+async def get_cluster_detail(cluster_id: int, db: DB):
     """
     Get detailed information about a specific cluster.
     Includes all articles, pairwise similarities, and unified content (if generated).
@@ -1161,10 +1161,10 @@ async def get_cluster_detail(cluster_id: int, db: Session = Depends(get_db)):
 @router.post("/clusters/generate")
 async def generate_clusters(
     background_tasks: BackgroundTasks,
+    db: DB,
+    current_user: AdminUser,
     days_back: int = Query(3, ge=1, le=30, description="How many days back to look for articles"),
     re_cluster: bool = Query(False, description="Re-cluster all articles (removes existing clusters)"),
-    db: Session = Depends(get_db),
-    current_user: User = Depends(require_admin)
 ):
     """
     Trigger article clustering. Groups similar articles from different sources.
@@ -1189,8 +1189,8 @@ async def generate_clusters(
 @router.post("/clusters/{cluster_id}/regenerate-summary")
 async def regenerate_cluster_summary(
     cluster_id: int,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(require_admin),
+    db: DB,
+    current_user: AdminUser,
 ):
     """
     Regenerate extractive unified summary for a specific cluster.
@@ -1214,8 +1214,8 @@ async def regenerate_cluster_summary(
 @router.post("/clusters/{cluster_id}/debias-unified")
 async def debias_unified_content(
     cluster_id: int,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(require_authenticated),
+    db: DB,
+    current_user: AuthenticatedUser,
 ):
     """
     Run bias detection and debiasing on a cluster's unified content.

@@ -3,7 +3,6 @@ Application configuration using pydantic-settings.
 Loads environment variables from .env file for local development
 and from environment for production deployment.
 """
-from typing import List
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from pydantic import Field
 
@@ -23,7 +22,7 @@ class Settings(BaseSettings):
     log_level: str = Field(default="INFO", env="LOG_LEVEL")
     
     # CORS Configuration
-    cors_origins: List[str] = Field(
+    cors_origins: list[str] = Field(
         default=["http://localhost:5173", "http://localhost:3000"],
         env="CORS_ORIGINS"
     )

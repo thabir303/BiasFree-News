@@ -3,11 +3,13 @@ SQLAlchemy database models for storing articles and analysis results.
 """
 from datetime import datetime
 from sqlalchemy import Column, Integer, String, Text, DateTime, Boolean, Float, JSON, Enum, ForeignKey, LargeBinary
-from sqlalchemy.orm import relationship
-from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.orm import relationship, DeclarativeBase
 import enum
 
-Base = declarative_base()
+
+class Base(DeclarativeBase):
+    """Declarative base for all ORM models."""
+    pass
 
 
 class UserRole(str, enum.Enum):

@@ -2,7 +2,7 @@
 Authentication service for user management and JWT token handling.
 """
 from datetime import datetime, timedelta
-from typing import Optional
+from typing import Annotated
 import secrets
 from jose import JWTError, jwt
 from passlib.context import CryptContext
@@ -36,7 +36,7 @@ class AuthService:
         return pwd_context.verify(plain_password, hashed_password)
     
     @staticmethod
-    def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -> str:
+    def create_access_token(data: dict, expires_delta: timedelta | None = None) -> str:
         """
         Create a JWT access token.
         
@@ -52,8 +52,8 @@ class AuthService:
         if expires_delta:
             expire = datetime.utcnow() + expires_delta
         else:
-            # Default to 7 days
-            expire = datetime.utcnow() + timedelta(days=7)
+            # Use configured expiration from settings
+            expire = datetime.utcnow() + timedelta(days=settings.jwt_expiration_days)
         
         to_encode.update({
             "exp": expire,
@@ -144,7 +144,7 @@ class AuthService:
         return db_user
     
     @staticmethod
-    def authenticate_user(db: Session, email: str, password: str) -> Optional[User]:
+    def authenticate_user(db: Session, email: str, password: str) -> User | str | None:
         """
         Authenticate a user by email and password.
         
@@ -173,17 +173,17 @@ class AuthService:
         return user
     
     @staticmethod
-    def get_user_by_id(db: Session, user_id: int) -> Optional[User]:
+    def get_user_by_id(db: Session, user_id: int) -> User | None:
         """Get user by ID."""
         return db.query(User).filter(User.id == user_id).first()
     
     @staticmethod
-    def get_user_by_email(db: Session, email: str) -> Optional[User]:
+    def get_user_by_email(db: Session, email: str) -> User | None:
         """Get user by email."""
         return db.query(User).filter(User.email == email).first()
     
     @staticmethod
-    def create_admin_user(db: Session) -> Optional[User]:
+    def create_admin_user(db: Session) -> User | None:
         """
         Create admin user from environment variables if not exists.
         
@@ -340,3 +340,8 @@ async def require_authenticated(current_user: User = Depends(get_current_user)) 
         Current authenticated user
     """
     return current_user
+
+# Annotated type aliases for dependency injection (FastAPI best practice)
+CurrentUser = Annotated[User, Depends(get_current_user)]
+AdminUser = Annotated[User, Depends(require_admin)]
+AuthenticatedUser = Annotated[User, Depends(require_authenticated)]

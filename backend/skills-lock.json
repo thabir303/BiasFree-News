@@ -1,6 +1,11 @@
 {
   "version": 1,
   "skills": {
+    "fastapi-expert": {
+      "source": "jeffallan/claude-skills",
+      "sourceType": "github",
+      "computedHash": "b445b45fd23883d030fbd39489a9fdee7a7520c58732b544c27ab788b0e70f7e"
+    },
     "fastapi-templates": {
       "source": "wshobson/agents",
       "sourceType": "github",

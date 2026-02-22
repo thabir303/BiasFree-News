@@ -2,12 +2,13 @@
 Authentication API routes for user signup, signin, and profile.
 """
 from datetime import datetime, timedelta
+from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
-from app.database.database import get_db
+from app.database.database import get_db, DB
 from app.models.schemas import UserSignup, UserSignin, TokenResponse, UserResponse, CategoryPreferencesRequest, CategoryPreferencesResponse, UserAnalysisCreate, UserAnalysisResponse, UserAnalysesListResponse, ForgotPasswordRequest, VerifyOtpRequest, ResetPasswordRequest, UpdateUsernameRequest
-from app.services.auth_service import AuthService, get_current_user
+from app.services.auth_service import AuthService, get_current_user, CurrentUser
 from app.services.email_service import email_service
 from app.database.models import User, UserAnalysis
 from app.config import settings
@@ -21,7 +22,7 @@ logger = logging.getLogger(__name__)
 @router.post("/signup", response_model=TokenResponse, status_code=status.HTTP_201_CREATED)
 async def signup(
     user_data: UserSignup,
-    db: Session = Depends(get_db)
+    db: DB
 ):
     """
     Register a new user.
@@ -85,7 +86,7 @@ async def signup(
 @router.post("/signin", response_model=TokenResponse)
 async def signin(
     credentials: UserSignin,
-    db: Session = Depends(get_db)
+    db: DB
 ):
     """
     Sign in with email and password.
@@ -136,7 +137,7 @@ async def signin(
 
 @router.get("/me", response_model=UserResponse)
 async def get_current_user_info(
-    current_user: User = Depends(get_current_user)
+    current_user: CurrentUser
 ):
     """
     Get current authenticated user information.
@@ -155,7 +156,7 @@ async def get_current_user_info(
 
 @router.get("/verify")
 async def verify_token(
-    current_user: User = Depends(get_current_user)
+    current_user: CurrentUser
 ):
     """
     Verify JWT token validity.
@@ -173,7 +174,7 @@ async def verify_token(
 @router.post("/verify-email/{token}")
 async def verify_email(
     token: str,
-    db: Session = Depends(get_db)
+    db: DB
 ):
     """
     Verify user email with verification token.
@@ -198,7 +199,7 @@ async def verify_email(
 @router.post("/resend-verification/{email}")
 async def resend_verification(
     email: str,
-    db: Session = Depends(get_db)
+    db: DB
 ):
     """
     Resend verification email to user.
@@ -258,7 +259,7 @@ async def resend_verification(
 @router.post("/forgot-password")
 async def forgot_password(
     request: ForgotPasswordRequest,
-    db: Session = Depends(get_db)
+    db: DB
 ):
     """
     Send a 6-digit OTP to the user's email for password reset.
@@ -303,7 +304,7 @@ async def forgot_password(
 @router.post("/verify-otp")
 async def verify_otp(
     request: VerifyOtpRequest,
-    db: Session = Depends(get_db)
+    db: DB
 ):
     """
     Verify the OTP sent to user's email.
@@ -337,7 +338,7 @@ async def verify_otp(
 @router.post("/reset-password")
 async def reset_password(
     request: ResetPasswordRequest,
-    db: Session = Depends(get_db)
+    db: DB
 ):
     """
     Reset password using verified OTP.
@@ -382,8 +383,8 @@ async def reset_password(
 @router.put("/username", response_model=UserResponse)
 async def update_username(
     request: UpdateUsernameRequest,
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
+    current_user: CurrentUser,
+    db: DB
 ):
     """
     Update the authenticated user's username.
@@ -429,7 +430,7 @@ async def update_username(
 
 @router.get("/preferences", response_model=CategoryPreferencesResponse)
 async def get_category_preferences(
-    current_user: User = Depends(get_current_user)
+    current_user: CurrentUser
 ):
     """
     Get user's category preferences (priority order).
@@ -443,8 +444,8 @@ async def get_category_preferences(
 @router.put("/preferences", response_model=CategoryPreferencesResponse)
 async def update_category_preferences(
     request: CategoryPreferencesRequest,
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
+    current_user: CurrentUser,
+    db: DB
 ):
     """
     Update user's category preferences (priority order).
@@ -492,8 +493,8 @@ async def update_category_preferences(
 @router.post("/analyses", response_model=UserAnalysisResponse, status_code=status.HTTP_201_CREATED)
 async def save_user_analysis(
     analysis_data: UserAnalysisCreate,
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
+    current_user: CurrentUser,
+    db: DB
 ):
     """
     Save a manual analysis result for the current user.
@@ -549,10 +550,10 @@ async def save_user_analysis(
 
 @router.get("/analyses", response_model=UserAnalysesListResponse)
 async def get_user_analyses(
+    current_user: CurrentUser,
+    db: DB,
     limit: int = 20,
     skip: int = 0,
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
 ):
     """
     Get all manual analyses for the current user, newest first.
@@ -597,8 +598,8 @@ async def get_user_analyses(
 @router.delete("/analyses/{analysis_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_user_analysis(
     analysis_id: int,
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
+    current_user: CurrentUser,
+    db: DB
 ):
     """
     Delete a manual analysis owned by the current user.
@@ -621,10 +622,10 @@ async def delete_user_analysis(
 
 @router.get("/admin/users")
 async def admin_list_users(
+    current_user: CurrentUser,
+    db: DB,
     skip: int = 0,
     limit: int = 50,
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
 ):
     """
     List all registered users. Admin only.
@@ -665,8 +666,8 @@ async def admin_list_users(
 @router.delete("/admin/users/{user_id}", status_code=status.HTTP_200_OK)
 async def admin_delete_user(
     user_id: int,
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
+    current_user: CurrentUser,
+    db: DB
 ):
     """
     Permanently delete a user by ID. Admin only.

@@ -2,15 +2,14 @@
 Manual bias analysis endpoints for on-demand article processing.
 Articles are scraped without processing, then analyzed individually via button clicks.
 """
-
 import logging
-from typing import Optional, Any, Dict
+from typing import Annotated, Any
 from datetime import date, datetime
 from fastapi import APIRouter, HTTPException, Depends, Query, BackgroundTasks, Request
 from sqlalchemy.orm import Session
 from slowapi import Limiter
 from slowapi.util import get_remote_address
-from app.database.database import get_db
+from app.database.database import get_db, DB
 from app.database.models import Article
 from app.models.schemas import BiasAnalysisResponse, DebiasResponse, HeadlineResponse
 from app.services.bias_detector import BiasDetectorService
@@ -32,11 +31,11 @@ bias_detector = BiasDetectorService()
 @router.post("/scrape-only")
 async def scrape_articles_only(
     background_tasks: BackgroundTasks,
-    newspapers: Optional[list[str]] = Query(None, description="Specific newspapers to scrape"),
-    start_date: Optional[date] = Query(None, description="Start date (YYYY-MM-DD)"),
-    end_date: Optional[date] = Query(None, description="End date (YYYY-MM-DD)"),
+    db: DB,
+    newspapers: list[str] | None = Query(None, description="Specific newspapers to scrape"),
+    start_date: date | None = Query(None, description="Start date (YYYY-MM-DD)"),
+    end_date: date | None = Query(None, description="End date (YYYY-MM-DD)"),
     max_articles: int = Query(50, ge=1, le=500, description="Maximum articles per newspaper"),
-    db: Session = Depends(get_db)
 ) -> dict[str, Any]:
     """
     Scrape articles from newspapers WITHOUT automatic processing.
@@ -106,8 +105,8 @@ async def scrape_articles_only(
 async def analyze_article_manual(
     request: Request,
     article_id: int,
+    db: DB,
     use_toon_format: bool = Query(False, description="Use TOON format for LLM efficiency"),
-    db: Session = Depends(get_db)
 ) -> BiasAnalysisResponse:
     """
     Manually analyze a single article for bias.
@@ -188,8 +187,8 @@ async def analyze_article_manual(
 async def debias_article_manual(
     request: Request,
     article_id: int,
+    db: DB,
     use_toon_format: bool = Query(False, description="Use TOON format for LLM efficiency"),
-    db: Session = Depends(get_db)
 ) -> dict[str, Any]:
     """
     Manually debias a single article (if biased).
@@ -271,10 +270,10 @@ async def debias_article_manual(
 @router.get("/unprocessed-articles")
 async def get_unprocessed_articles(
     request: Request,
-    db: Session = Depends(get_db),
+    db: DB,
     skip: int = Query(0, ge=0),
     limit: int = Query(10, ge=1, le=100),
-    source: Optional[str] = Query(None, description="Filter by news source")
+    source: str | None = Query(None, description="Filter by news source")
 ) -> dict[str, Any]:
     """
     Get unprocessed articles that need manual bias analysis.
@@ -326,9 +325,9 @@ async def get_unprocessed_articles(
 @limiter.limit(f"{settings.rate_limit_per_minute}/minute")
 async def batch_analyze_unprocessed(
     request: Request,
+    db: DB,
     max_articles: int = Query(20, ge=1, le=100, description="Maximum articles to analyze"),
     use_toon_format: bool = Query(True, description="Use TOON format for efficiency"),
-    db: Session = Depends(get_db)
 ) -> dict[str, Any]:
     """
     Batch analyze multiple unprocessed articles.

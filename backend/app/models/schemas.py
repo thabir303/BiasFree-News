@@ -2,7 +2,6 @@
 Pydantic models for request/response validation.
 Ensures type safety and automatic API documentation.
 """
-from typing import List, Optional
 from pydantic import BaseModel, Field, field_validator, EmailStr
 from datetime import date
 
@@ -29,31 +28,30 @@ class TokenResponse(BaseModel):
     access_token: str = Field(..., description="JWT access token")
     token_type: str = Field(default="bearer", description="Token type")
     user: "UserResponse"
-    message: Optional[str] = Field(None, description="Additional message (e.g., verification info)")
+    message: str | None = Field(None, description="Additional message (e.g., verification info)")
 
 
 class UserResponse(BaseModel):
     """User information response."""
+    model_config = {"from_attributes": True}
+
     id: int
     username: str
     email: str
     role: str
     is_active: bool
-    category_preferences: Optional[List[str]] = None
-    
-    class Config:
-        from_attributes = True
+    category_preferences: list[str] | None = None
 
 
 class CategoryPreferencesRequest(BaseModel):
     """Request model for updating category preferences."""
-    categories: List[str] = Field(..., min_length=1, description="Ordered list of category keys by priority")
+    categories: list[str] = Field(..., min_length=1, description="Ordered list of category keys by priority")
 
 
 class CategoryPreferencesResponse(BaseModel):
     """Response model for category preferences."""
-    categories: List[str] = Field(default_factory=list, description="Ordered category keys")
-    message: Optional[str] = None
+    categories: list[str] = Field(default_factory=list, description="Ordered category keys")
+    message: str | None = None
 
 
 class UpdateUsernameRequest(BaseModel):
@@ -85,49 +83,48 @@ class ResetPasswordRequest(BaseModel):
 
 class UserAnalysisCreate(BaseModel):
     """Request model for saving a manual analysis."""
-    title: Optional[str] = Field(None, description="Article title")
+    title: str | None = Field(None, description="Article title")
     original_content: str = Field(..., min_length=10, description="Original article content")
-    is_biased: Optional[bool] = None
-    bias_score: Optional[float] = None
-    bias_summary: Optional[str] = None
-    biased_terms: Optional[list] = None
-    confidence: Optional[float] = None
-    debiased_content: Optional[str] = None
-    changes_made: Optional[list] = None
-    total_changes: Optional[int] = 0
-    generated_headlines: Optional[list] = None
-    recommended_headline: Optional[str] = None
-    headline_reasoning: Optional[str] = None
-    processing_time: Optional[float] = None
+    is_biased: bool | None = None
+    bias_score: float | None = None
+    bias_summary: str | None = None
+    biased_terms: list | None = None
+    confidence: float | None = None
+    debiased_content: str | None = None
+    changes_made: list | None = None
+    total_changes: int | None = 0
+    generated_headlines: list | None = None
+    recommended_headline: str | None = None
+    headline_reasoning: str | None = None
+    processing_time: float | None = None
 
 
 class UserAnalysisResponse(BaseModel):
     """Response model for a saved user analysis."""
+    model_config = {"from_attributes": True}
+
     id: int
     user_id: int
-    title: Optional[str] = None
+    title: str | None = None
     original_content: str
-    is_biased: Optional[bool] = None
-    bias_score: Optional[float] = None
-    bias_summary: Optional[str] = None
-    biased_terms: Optional[list] = None
-    confidence: Optional[float] = None
-    debiased_content: Optional[str] = None
-    changes_made: Optional[list] = None
-    total_changes: Optional[int] = 0
-    generated_headlines: Optional[list] = None
-    recommended_headline: Optional[str] = None
-    headline_reasoning: Optional[str] = None
-    processing_time: Optional[float] = None
+    is_biased: bool | None = None
+    bias_score: float | None = None
+    bias_summary: str | None = None
+    biased_terms: list | None = None
+    confidence: float | None = None
+    debiased_content: str | None = None
+    changes_made: list | None = None
+    total_changes: int | None = 0
+    generated_headlines: list | None = None
+    recommended_headline: str | None = None
+    headline_reasoning: str | None = None
+    processing_time: float | None = None
     created_at: str
-
-    class Config:
-        from_attributes = True
 
 
 class UserAnalysesListResponse(BaseModel):
     """Response model for list of user analyses."""
-    analyses: List[UserAnalysisResponse]
+    analyses: list[UserAnalysisResponse]
     total: int
 
 
@@ -138,7 +135,7 @@ class UserAnalysesListResponse(BaseModel):
 class ArticleInput(BaseModel):
     """Input model for article analysis."""
     content: str = Field(..., min_length=50, description="Article content in Bengali")
-    title: Optional[str] = Field(None, description="Original article title")
+    title: str | None = Field(None, description="Original article title")
     
     @field_validator("content")
     @classmethod
@@ -156,14 +153,14 @@ class BiasedTerm(BaseModel):
     reason: str = Field(..., description="Why this term is biased")
     neutral_alternative: str = Field(..., description="Neutral replacement suggestion")
     severity: str = Field(..., description="Bias severity: low, medium, high")
-    position: Optional[int] = Field(None, description="Character position in text")
+    position: int | None = Field(None, description="Character position in text")
 
 
 class BiasAnalysisResponse(BaseModel):
     """Response model for bias analysis."""
     is_biased: bool = Field(..., description="Whether article contains bias")
     bias_score: float = Field(..., ge=0.0, le=100.0, description="Bias score (0-100)")
-    biased_terms: List[BiasedTerm] = Field(default_factory=list, description="List of biased terms")
+    biased_terms: list[BiasedTerm] = Field(default_factory=list, description="List of biased terms")
     summary: str = Field(..., description="Brief analysis summary")
     confidence: float = Field(..., ge=0.0, le=1.0, description="Analysis confidence (0-1)")
 
@@ -179,14 +176,14 @@ class DebiasResponse(BaseModel):
     """Response model for debiased content."""
     original_content: str = Field(..., description="Original article content")
     debiased_content: str = Field(..., description="Debiased article content")
-    changes: List[ContentChange] = Field(default_factory=list, description="List of changes made")
+    changes: list[ContentChange] = Field(default_factory=list, description="List of changes made")
     total_changes: int = Field(..., description="Number of changes made")
 
 
 class HeadlineResponse(BaseModel):
     """Response model for headline generation."""
-    original_title: Optional[str] = Field(None, description="Original headline")
-    generated_headlines: List[str] = Field(..., min_length=1, description="Generated neutral headlines")
+    original_title: str | None = Field(None, description="Original headline")
+    generated_headlines: list[str] = Field(..., min_length=1, description="Generated neutral headlines")
     recommended_headline: str = Field(..., description="Most recommended headline")
     reasoning: str = Field(..., description="Why this headline is recommended")
 
@@ -196,7 +193,7 @@ class ScrapeRequest(BaseModel):
     source: str = Field(..., description="Newspaper source: prothom_alo, jugantor, daily_star, dhaka_tribune")
     start_date: date = Field(..., description="Start date for scraping")
     end_date: date = Field(..., description="End date for scraping")
-    section_ids: Optional[List[str]] = Field(None, description="Optional section IDs for Prothom Alo (e.g., ['22237', '17533,17535'])")
+    section_ids: list[str] | None = Field(None, description="Optional section IDs for Prothom Alo (e.g., ['22237', '17533,17535'])")
     
     @field_validator("source")
     @classmethod
@@ -221,14 +218,14 @@ class ScrapedArticle(BaseModel):
     title: str
     content: str
     url: str
-    published_date: Optional[str] = None
+    published_date: str | None = None
     source: str
-    category: Optional[str] = None  # রাজনীতি, বিশ্ব, মতামত, বাংলাদেশ
+    category: str | None = None  # রাজনীতি, বিশ্ব, মতামত, বাংলাদেশ
 
 
 class ScrapeResponse(BaseModel):
     """Response model for scraping results."""
-    articles: List[ScrapedArticle] = Field(default_factory=list)
+    articles: list[ScrapedArticle] = Field(default_factory=list)
     total_count: int = Field(..., description="Total articles scraped")
     source: str = Field(..., description="Newspaper source")
     date_range: str = Field(..., description="Date range scraped")
