@@ -193,8 +193,16 @@ Use browser DevTools to identify correct selectors.
 
 ## Testing
 
+Run all unit tests with verbose output (coverage report generated in `tests/coverage_report/`):
+
 ```bash
-pytest tests/ -v
+~/.pyenv/shims/pytest tests/ --ignore=tests/test_api.py -v
+```
+
+Run with coverage report:
+
+```bash
+~/.pyenv/shims/pytest tests/ --ignore=tests/test_api.py --cov=app --cov-report=html:tests/coverage_report/html --cov-report=term-missing
 ```
 
 ## Project Structure

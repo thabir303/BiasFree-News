@@ -1,0 +1,30 @@
+[run]
+source = app
+omit =
+    app/__pycache__/*
+    app/*/migrations/*
+    app/celery_app.py
+    app/tasks.py
+
+[report]
+# Minimum coverage threshold (warning, not failure)
+# fail_under = 60
+show_missing = true
+skip_covered = false
+exclude_lines =
+    pragma: no cover
+    def __repr__
+    if self.debug:
+    if settings.DEBUG:
+    raise AssertionError
+    raise NotImplementedError
+    if 0:
+    if __name__ == .__main__.:
+    pass
+
+[html]
+directory = tests/coverage_report/html
+title = BiasFree Backend Coverage Report
+
+[xml]
+output = tests/coverage_report/coverage.xml
