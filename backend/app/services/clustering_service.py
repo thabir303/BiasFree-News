@@ -799,6 +799,7 @@ JSON ফরম্যাটে উত্তর দাও।"""
                         "source": a.source,
                         "is_biased": a.is_biased,
                         "bias_score": a.bias_score,
+                        "content_preview": (a.original_content[:200] + '...') if a.original_content and len(a.original_content) > 200 else (a.original_content or ''),
                     }
                     for a in article_previews
                 ]

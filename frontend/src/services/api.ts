@@ -319,6 +319,7 @@ export interface ClusterArticlePreview {
     source: string;
     is_biased: boolean | null;
     bias_score: number | null;
+    content_preview: string;
 }
 
 export interface ArticleCluster {

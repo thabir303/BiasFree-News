@@ -311,9 +311,16 @@ const ClusterCard = ({ cluster }: { cluster: ArticleCluster }) => {
       </div>
 
       {/* Title */}
-      <h3 className="text-[15px] font-semibold leading-snug text-gray-100 mb-2 line-clamp-2 group-hover:text-white transition-colors">
+      <h3 className="text-[15px] font-semibold leading-snug text-gray-100 mb-1.5 line-clamp-2 group-hover:text-white transition-colors">
         {cluster.representative_title || cluster.cluster_label || 'Untitled Cluster'}
       </h3>
+
+      {/* Content Preview */}
+      {cluster.article_previews?.[0]?.content_preview && (
+        <p className="text-xs text-gray-500 leading-relaxed line-clamp-2 mb-2">
+          {cluster.article_previews[0].content_preview}
+        </p>
+      )}
 
       {/* Source pills */}
       <div className="flex flex-wrap gap-1.5 mb-3">

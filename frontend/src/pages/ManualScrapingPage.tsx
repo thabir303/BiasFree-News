@@ -23,12 +23,12 @@ const ManualScrapingPage = () => {
   const today = new Date().toISOString().split('T')[0]; // max date cap
 
   const newspapers: Newspaper[] = [
-    { key: 'prothom_alo', name: 'প্রথম আলো', base_url: 'https://www.prothomalo.com', language: 'bn', enabled: true },
-    { key: 'daily_star', name: 'ডেইলি স্টার', base_url: 'https://bangla.thedailystar.net', language: 'en', enabled: true },
-    { key: 'jugantor', name: 'যুগান্তর', base_url: 'https://www.jugantor.com', language: 'bn', enabled: true },
-    { key: 'samakal', name: 'সমকাল', base_url: 'https://samakal.com', language: 'bn', enabled: true },
-    { key: 'naya_diganta', name: 'নয়া দিগন্ত', base_url: 'https://dailynayadiganta.com', language: 'bn', enabled: true },
-    { key: 'ittefaq', name: 'ইত্তেফাক', base_url: 'https://www.ittefaq.com.bd', language: 'bn', enabled: true },
+    { key: 'prothom_alo', name: 'প্রথম আলো', base_url: 'prothomalo.com', language: 'bn', enabled: true },
+    { key: 'daily_star', name: 'ডেইলি স্টার', base_url: 'bangla.thedailystar.net', language: 'en', enabled: true },
+    { key: 'jugantor', name: 'যুগান্তর', base_url: 'jugantor.com', language: 'bn', enabled: true },
+    { key: 'samakal', name: 'সমকাল', base_url: 'samakal.com', language: 'bn', enabled: true },
+    { key: 'naya_diganta', name: 'নয়া দিগন্ত', base_url: 'dailynayadiganta.com', language: 'bn', enabled: true },
+    { key: 'ittefaq', name: 'ইত্তেফাক', base_url: 'ittefaq.com.bd', language: 'bn', enabled: true },
   ];
 
   const NEWSPAPER_LOGOS: Record<string, string> = {
