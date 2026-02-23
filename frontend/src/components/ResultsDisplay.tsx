@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import type { FullProcessResponse } from '../types/index';
 
 interface ResultsDisplayProps {
@@ -6,6 +7,13 @@ interface ResultsDisplayProps {
 
 export default function ResultsDisplay({ results }: ResultsDisplayProps) {
     const { analysis, debiased, headline } = results;
+    const [viewMode, setViewMode] = useState<'split' | 'diff'>('split');
+
+    const getBiasColor = (score: number) => {
+        if (score >= 70) return 'text-red-400 bg-red-500/10 border-red-500/30';
+        if (score >= 40) return 'text-yellow-400 bg-yellow-500/10 border-yellow-500/30';
+        return 'text-green-400 bg-green-500/10 border-green-500/30';
+    };
 
     const highlightBiasedTerms = (text: string, terms: any[] | null) => {
         if (!text || !terms || !Array.isArray(terms) || terms.length === 0) return text;
@@ -147,141 +155,206 @@ export default function ResultsDisplay({ results }: ResultsDisplayProps) {
 
     return (
         <div className="space-y-6">
-            {/* Bias Analysis */}
-            <div className="glass-card p-6">
-                <h3 className="text-2xl font-bold mb-4">{analysis.is_biased ? '⚠ Biased' : '✅ Neutral'}</h3>
-
-                <div className="mb-4">
-                    <p>Bias Score: {analysis.bias_score.toFixed(1)}%</p>
-                    <div className="w-full bg-gray-700 rounded-full h-3 mt-2">
-                        <div
-                            className="h-3 rounded-full bg-red-500"
-                            style={{ width: `${analysis.bias_score}%` }}
-                        />
+            {/* Analysis Header with Bias Score */}
+            <div className="bg-gray-900/50 backdrop-blur-sm rounded-xl border border-gray-800 p-6">
+                <div className="flex flex-wrap items-start justify-between gap-4 mb-4">
+                    <div className="flex-1">
+                        <h2 className="text-3xl font-bold text-white mb-2">
+                            {analysis.is_biased ? '⚠ Biased' : '✅ Neutral'}
+                        </h2>
                     </div>
+
+                    {/* Bias Score Badge */}
+                    {analysis.is_biased && (
+                        <div className={`px-6 py-3 rounded-xl border text-center ${getBiasColor(analysis.bias_score)}`}>
+                            <div className="text-3xl font-bold">{analysis.bias_score.toFixed(0)}%</div>
+                            <div className="text-xs mt-1">Bias Score</div>
+                        </div>
+                    )}
+
+                    {!analysis.is_biased && (
+                        <div className="px-6 py-3 rounded-xl border border-green-500/30 bg-green-500/10 text-center">
+                            <div className="text-2xl font-bold text-green-400">✅</div>
+                            <div className="text-xs mt-1 text-green-400">No Bias Detected</div>
+                        </div>
+                    )}
                 </div>
 
-                <p className="text-gray-300">{analysis.summary}</p>
-
-                {analysis.biased_terms.length > 0 && (
-                    <div className="mt-4 space-y-2">
-                        <h4 className="font-semibold">Biased Terms:</h4>
-                        {analysis.biased_terms.map((term, i) => (
-                            <div key={i} className="p-3 bg-red-500/20 rounded-lg border border-red-500/50">
-                                <p className="font-medium">{term.term}</p>
-                                <p className="text-sm opacity-90">{term.reason}</p>
-                                <p className="text-sm mt-1">→ {term.neutral_alternative}</p>
-                            </div>
-                        ))}
+                {/* Analysis Summary */}
+                {analysis.summary && (
+                    <div className="bg-gray-800/50 rounded-lg p-4 border-l-4 border-yellow-500">
+                        <h3 className="font-semibold text-yellow-400 mb-2">📋 Analysis Summary</h3>
+                        <p className="text-gray-300">{analysis.summary}</p>
                     </div>
                 )}
             </div>
 
-            {/* Debiased Content */}
-            <div className="glass-card p-6">
-                <h3 className="text-2xl font-bold mb-6">📝 Content Comparison</h3>
+            {/* View Mode Toggle */}
+            {debiased.debiased_content && (
+                <div className="flex justify-center">
+                    <div className="inline-flex rounded-lg border border-gray-800 bg-gray-900/50 p-1">
+                        <button
+                            onClick={() => setViewMode('split')}
+                            className={`px-6 py-2 rounded-lg transition-all ${
+                                viewMode === 'split'
+                                    ? 'bg-primary-500 text-white'
+                                    : 'text-gray-400 hover:text-white'
+                            }`}
+                        >
+                            Split View
+                        </button>
+                        <button
+                            onClick={() => setViewMode('diff')}
+                            className={`px-6 py-2 rounded-lg transition-all ${
+                                viewMode === 'diff'
+                                    ? 'bg-primary-500 text-white'
+                                    : 'text-gray-400 hover:text-white'
+                            }`}
+                        >
+                            Diff View
+                        </button>
+                    </div>
+                </div>
+            )}
 
-                <div className="grid lg:grid-cols-2 gap-6 mb-6">
+            {/* Split View - Content Comparison */}
+            {viewMode === 'split' && (
+                <div className="grid lg:grid-cols-2 gap-6">
                     {/* Original Content */}
-                    <div className="bg-gray-900/50 backdrop-blur-sm rounded-xl border border-gray-800 p-5">
+                    <div className="bg-gray-900/50 backdrop-blur-sm rounded-xl border border-gray-800 p-6">
                         <div className="flex items-center justify-between mb-4">
-                            <h4 className="text-lg font-bold text-white flex items-center space-x-2">
+                            <h2 className="text-xl font-bold text-white flex items-center space-x-2">
                                 <span>📄</span>
                                 <span>Original Article</span>
-                            </h4>
+                            </h2>
                             {analysis.biased_terms && analysis.biased_terms.length > 0 && (
-                                <span className="px-2.5 py-1 bg-red-500/10 border border-red-500/30 rounded-full text-red-400 text-xs font-semibold">
+                                <span className="px-3 py-1 bg-red-500/10 border border-red-500/30 rounded-full text-red-400 text-sm">
                                     {analysis.biased_terms.length} biased terms
                                 </span>
                             )}
                         </div>
-                        <div className="bg-red-500/5 border border-red-500/20 rounded-lg p-4 max-h-[500px] overflow-y-auto">
-                            <p className="text-gray-300 whitespace-pre-wrap leading-relaxed">
+                        <div className="prose prose-invert max-w-none">
+                            <p className="text-gray-300 leading-relaxed whitespace-pre-wrap">
                                 {highlightBiasedTerms(debiased.original_content, analysis.biased_terms)}
                             </p>
                         </div>
                     </div>
 
                     {/* Debiased Content */}
-                    <div className="bg-gray-900/50 backdrop-blur-sm rounded-xl border border-gray-800 p-5">
+                    <div className="bg-gray-900/50 backdrop-blur-sm rounded-xl border border-gray-800 p-6">
                         <div className="flex items-center justify-between mb-4">
-                            <h4 className="text-lg font-bold text-white flex items-center space-x-2">
+                            <h2 className="text-xl font-bold text-white flex items-center space-x-2">
                                 <span>✨</span>
                                 <span>Debiased Article</span>
-                            </h4>
+                            </h2>
                             {debiased.changes && debiased.changes.length > 0 && (
-                                <span className="px-2.5 py-1 bg-yellow-500/10 border border-yellow-500/30 rounded-full text-yellow-400 text-xs font-semibold">
+                                <span className="px-3 py-1 bg-yellow-500/10 border border-yellow-500/30 rounded-full text-yellow-400 text-sm">
                                     {debiased.changes.length} changes
                                 </span>
                             )}
                         </div>
-                        <div className="bg-green-500/5 border border-green-500/20 rounded-lg p-4 max-h-[500px] overflow-y-auto">
-                            <p className="text-gray-300 whitespace-pre-wrap leading-relaxed">
+                        <div className="prose prose-invert max-w-none">
+                            <p className="text-gray-300 leading-relaxed whitespace-pre-wrap">
                                 {highlightDebiasedTerms(debiased.debiased_content, debiased.changes, debiased.original_content)}
                             </p>
                         </div>
                     </div>
                 </div>
+            )}
 
-                {/* Changes Summary */}
-                {debiased.changes && debiased.changes.length > 0 && (
-                    <div className="bg-gray-800/50 rounded-lg p-5 border border-gray-700 mb-4">
-                        <h4 className="text-base font-bold text-white mb-3 flex items-center space-x-2">
-                            <span>🔄</span>
-                            <span>Changes Made ({debiased.changes.length})</span>
-                        </h4>
-                        <div className="space-y-2 max-h-48 overflow-y-auto">
-                            {debiased.changes.map((change, idx) => (
-                                <div key={idx} className="flex items-start gap-3 text-sm bg-gray-900/30 rounded-lg p-3">
-                                    <span className="text-gray-500 shrink-0 font-semibold">{idx + 1}.</span>
-                                    <div className="flex-1">
-                                        <span className="text-red-400 line-through">{change.original}</span>
-                                        <span className="text-gray-500 mx-2">→</span>
-                                        <span className="text-green-400 font-medium">{change.debiased}</span>
+            {/* Diff View */}
+            {viewMode === 'diff' && debiased.changes && debiased.changes.length > 0 && (
+                <div className="bg-gray-900/50 backdrop-blur-sm rounded-xl border border-gray-800 p-6">
+                    <h2 className="text-xl font-bold text-white mb-6 flex items-center space-x-2">
+                        <span>🔄</span>
+                        <span>Changes Made ({debiased.changes.length})</span>
+                    </h2>
+                    <div className="space-y-4">
+                        {debiased.changes.map((change, idx) => (
+                            <div
+                                key={idx}
+                                className="bg-gray-800/50 rounded-lg p-4 border border-gray-700"
+                            >
+                                <div className="grid md:grid-cols-2 gap-4 mb-3">
+                                    <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-3">
+                                        <div className="text-xs text-red-400 font-semibold mb-1">ORIGINAL</div>
+                                        <div className="text-gray-300 line-through">{change.original}</div>
+                                    </div>
+                                    <div className="bg-green-500/10 border border-green-500/30 rounded-lg p-3">
+                                        <div className="text-xs text-green-400 font-semibold mb-1">DEBIASED</div>
+                                        <div className="text-gray-300">{change.debiased}</div>
                                     </div>
                                 </div>
-                            ))}
-                        </div>
-                    </div>
-                )}
-
-                {/* Legend */}
-                <div className="bg-gray-800/30 rounded-lg p-4 border border-gray-700/50">
-                    <div className="flex flex-wrap gap-6 text-sm">
-                        <div className="flex items-center gap-2">
-                            <span className="bg-red-500/20 text-red-300 border-b-2 border-red-500 px-2 py-1 rounded">
-                                Biased
-                            </span>
-                            <span className="text-gray-400">= Original biased terms</span>
-                        </div>
-                        <div className="flex items-center gap-2">
-                            <span className="bg-yellow-500/20 text-yellow-300 border-b-2 border-yellow-500 px-2 py-1 rounded">
-                                Changed
-                            </span>
-                            <span className="text-gray-400">= Debiased replacements</span>
-                        </div>
+                                <div className="text-sm text-gray-400 bg-gray-900/50 rounded-lg p-3">
+                                    <span className="font-semibold text-yellow-400">Reason:</span> {change.reason}
+                                </div>
+                            </div>
+                        ))}
                     </div>
                 </div>
-            </div>
+            )}
+
+            {/* Biased Terms Detail */}
+            {analysis.biased_terms.length > 0 && (
+                <div className="bg-gray-900/50 backdrop-blur-sm rounded-xl border border-gray-800 p-6">
+                    <h3 className="text-xl font-bold text-white mb-4">🔍 Biased Terms Detail</h3>
+                    <div className="space-y-3">
+                        {analysis.biased_terms.map((term, i) => (
+                            <div key={i} className="p-4 bg-red-500/10 rounded-lg border border-red-500/30">
+                                <p className="font-semibold text-red-300">{term.term}</p>
+                                <p className="text-sm text-gray-400 mt-1">{term.reason}</p>
+                                <p className="text-sm text-green-400 mt-1">→ {term.neutral_alternative}</p>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            )}
 
             {/* Headlines */}
-            <div className="glass-card p-6">
-                <h3 className="text-2xl font-bold mb-4">📰 Headlines</h3>
+            <div className="bg-gradient-to-r from-primary-500/10 to-emerald-500/10 border border-primary-500/30 rounded-xl p-6">
+                <h3 className="text-lg font-bold text-primary-400 mb-4 flex items-center space-x-2">
+                    <span>📰</span>
+                    <span>Headlines</span>
+                </h3>
 
                 {headline.original_title && (
                     <div className="mb-4">
                         <h4 className="text-sm font-semibold text-gray-400 mb-2">Original:</h4>
-                        <p className="p-3 bg-red-500/5 border border-red-500/20 rounded-lg">{headline.original_title}</p>
+                        <p className="p-3 bg-red-500/5 border border-red-500/20 rounded-lg text-gray-300">{headline.original_title}</p>
                     </div>
                 )}
 
                 <div>
                     <h4 className="text-sm font-semibold text-gray-400 mb-2">Recommended:</h4>
-                    <p className="p-3 bg-primary-500/10 border border-primary-500/30 rounded-lg font-medium">
+                    <p className="p-3 bg-primary-500/10 border border-primary-500/30 rounded-lg font-medium text-white">
                         {headline.recommended_headline}
                     </p>
                 </div>
             </div>
+
+            {/* Color Legend */}
+            {analysis.is_biased && (
+                <div className="bg-gray-900/50 backdrop-blur-sm rounded-xl border border-gray-800 p-6">
+                    <h3 className="text-lg font-bold text-white mb-4">🎨 Color Legend</h3>
+                    <div className="grid md:grid-cols-2 gap-4">
+                        <div className="flex items-center space-x-3">
+                            <span className="bg-red-500/20 text-red-300 border-b-2 border-red-500 px-3 py-1 rounded">
+                                Biased
+                            </span>
+                            <span className="text-gray-400">= Original biased terms</span>
+                        </div>
+                        <div className="flex items-center space-x-3">
+                            <span className="bg-yellow-500/20 text-yellow-300 border-b-2 border-yellow-500 px-3 py-1 rounded">
+                                Changed
+                            </span>
+                            <span className="text-gray-400">= Debiased replacements</span>
+                        </div>
+                    </div>
+                    <p className="text-sm text-gray-500 mt-4">
+                        💡 Hover over highlighted text to see detailed explanations
+                    </p>
+                </div>
+            )}
         </div>
     );
 }

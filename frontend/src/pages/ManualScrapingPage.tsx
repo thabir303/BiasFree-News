@@ -23,13 +23,22 @@ const ManualScrapingPage = () => {
   const today = new Date().toISOString().split('T')[0]; // max date cap
 
   const newspapers: Newspaper[] = [
-    { key: 'prothom_alo', name: 'Prothom Alo', base_url: 'https://www.prothomalo.com', language: 'bn', enabled: true },
-    { key: 'daily_star', name: 'The Daily Star', base_url: 'https://bangla.thedailystar.net', language: 'en', enabled: true },
-    { key: 'jugantor', name: 'Jugantor', base_url: 'https://www.jugantor.com', language: 'bn', enabled: true },
-    { key: 'samakal', name: 'Samakal', base_url: 'https://samakal.com', language: 'bn', enabled: true },
-    { key: 'naya_diganta', name: 'Naya Diganta', base_url: 'https://dailynayadiganta.com', language: 'bn', enabled: true },
-    { key: 'ittefaq', name: 'Ittefaq', base_url: 'https://www.ittefaq.com.bd', language: 'bn', enabled: true },
+    { key: 'prothom_alo', name: 'প্রথম আলো', base_url: 'https://www.prothomalo.com', language: 'bn', enabled: true },
+    { key: 'daily_star', name: 'ডেইলি স্টার', base_url: 'https://bangla.thedailystar.net', language: 'en', enabled: true },
+    { key: 'jugantor', name: 'যুগান্তর', base_url: 'https://www.jugantor.com', language: 'bn', enabled: true },
+    { key: 'samakal', name: 'সমকাল', base_url: 'https://samakal.com', language: 'bn', enabled: true },
+    { key: 'naya_diganta', name: 'নয়া দিগন্ত', base_url: 'https://dailynayadiganta.com', language: 'bn', enabled: true },
+    { key: 'ittefaq', name: 'ইত্তেফাক', base_url: 'https://www.ittefaq.com.bd', language: 'bn', enabled: true },
   ];
+
+  const NEWSPAPER_LOGOS: Record<string, string> = {
+    prothom_alo: '/prothomalo.png',
+    daily_star: '/dailystar.png',
+    jugantor: '/jugantor.png',
+    samakal: '/samakal.png',
+    naya_diganta: '/nayadiganta.png',
+    ittefaq: '/ittefaq.png',
+  };
 
   // Cleanup polling on unmount
   useEffect(() => {
@@ -189,9 +198,18 @@ const ManualScrapingPage = () => {
                   `}
                 >
                   <div className="flex items-center justify-between">
-                    <div>
-                      <div className="font-semibold text-white">{newspaper.name}</div>
-                      <div className="text-xs text-gray-500 mt-1">{newspaper.base_url}</div>
+                    <div className="flex items-center gap-3">
+                      {NEWSPAPER_LOGOS[newspaper.key] && (
+                        <img
+                          src={NEWSPAPER_LOGOS[newspaper.key]}
+                          alt={newspaper.name}
+                          className="w-10 h-10 rounded-md object-contain shrink-0 bg-white p-1"
+                        />
+                      )}
+                      <div>
+                        <div className="font-semibold text-white">{newspaper.name}</div>
+                        <div className="text-xs text-gray-500 mt-1">{newspaper.base_url}</div>
+                      </div>
                     </div>
                     <div
                       className={`

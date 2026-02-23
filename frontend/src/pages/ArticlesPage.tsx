@@ -17,7 +17,7 @@ const CATEGORIES = [
 
 const SOURCE_LABELS: Record<string, string> = {
   prothom_alo: 'প্রথম আলো',
-  daily_star: 'Daily Star',
+  daily_star: 'ডেইলি স্টার',
   jugantor: 'যুগান্তর',
   samakal: 'সমকাল',
   naya_diganta: 'নয়া দিগন্ত',
@@ -33,12 +33,20 @@ const SOURCE_COLORS: Record<string, string> = {
   ittefaq: 'bg-yellow-500',
 };
 
+const SOURCE_LOGOS: Record<string, string> = {
+  prothom_alo: '/prothomalo.png',
+  daily_star: '/dailystar.png',
+  jugantor: '/jugantor.png',
+  samakal: '/samakal.png',
+  naya_diganta: '/nayadiganta.png',
+  ittefaq: '/ittefaq.png',
+};
+
 interface CategoryData {
   articles: Article[];
   total: number;
 }
 
-/* ─── Skeleton loaders ──────────────────────────────────── */
 const CardSkeleton = () => (
   <div className="rounded-2xl border border-gray-800/60 bg-gray-900/40 p-5 animate-pulse">
     <div className="flex items-center gap-2 mb-4">
@@ -204,6 +212,7 @@ const ArticlesPage = () => {
   const ArticleCard = ({ article }: { article: Article }) => {
     const bias = getBiasIndicator(article.bias_score);
     const sourceColor = SOURCE_COLORS[article.source] || 'bg-gray-500';
+    const sourceLogo = SOURCE_LOGOS[article.source];
     const sourceLabel = SOURCE_LABELS[article.source] || article.source;
     const date = formatDate(article.scraped_at);
 
@@ -215,7 +224,11 @@ const ArticlesPage = () => {
         {/* Top row — source + bias */}
         <div className="flex items-center justify-between mb-3.5">
           <div className="flex items-center gap-2">
-            <span className={`w-2 h-2 rounded-full ${sourceColor} shrink-0`} />
+            {sourceLogo ? (
+              <img src={sourceLogo} alt={sourceLabel} className="w-8 h-8 rounded-md object-contain shrink-0 bg-white p-0.2" />
+            ) : (
+              <span className={`w-2 h-2 rounded-full ${sourceColor} shrink-0`} />
+            )}
             <span className="text-xs font-medium text-gray-400 uppercase tracking-wide">
               {sourceLabel}
             </span>

@@ -4,9 +4,11 @@ import { api, type Article, type MergedArticle } from '../services/api';
 
 const SOURCE_LABELS: Record<string, string> = {
   prothom_alo: 'প্রথম আলো',
-  daily_star: 'Daily Star',
+  daily_star: 'ডেইলি স্টার',
   jugantor: 'যুগান্তর',
   samakal: 'সমকাল',
+  naya_diganta: 'নয়া দিগন্ত',
+  ittefaq: 'ইত্তেফাক',
 };
 
 const SOURCE_COLORS: Record<string, string> = {
@@ -14,6 +16,8 @@ const SOURCE_COLORS: Record<string, string> = {
   daily_star: 'bg-sky-500',
   jugantor: 'bg-rose-500',
   samakal: 'bg-violet-500',
+  naya_diganta: 'bg-green-500',
+  ittefaq: 'bg-teal-500',
 };
 
 const SOURCE_TEXT_COLORS: Record<string, string> = {
@@ -21,6 +25,8 @@ const SOURCE_TEXT_COLORS: Record<string, string> = {
   daily_star: 'text-sky-400',
   jugantor: 'text-rose-400',
   samakal: 'text-violet-400',
+  naya_diganta: 'text-green-400',
+  ittefaq: 'text-teal-400',
 };
 
 const ArticleDetailPage = () => {

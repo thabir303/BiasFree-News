@@ -20,14 +20,23 @@ interface ArticleFiltersProps {
 
 const today = new Date().toISOString().split('T')[0];
 
+const SOURCE_LOGO: Record<string, string> = {
+  prothom_alo: '/prothomalo.png',
+  daily_star: '/dailystar.png',
+  jugantor: '/jugantor.png',
+  samakal: '/samakal.png',
+  naya_diganta: '/nayadiganta.png',
+  ittefaq: '/ittefaq.png',
+};
+
 const SOURCE_OPTIONS = [
-  { value: '', label: 'All Sources', color: null },
-  { value: 'prothom_alo', label: 'প্রথম আলো', color: 'bg-orange-500' },
-  { value: 'daily_star', label: 'Daily Star', color: 'bg-sky-500' },
-  { value: 'jugantor', label: 'যুগান্তর', color: 'bg-rose-500' },
-  { value: 'samakal', label: 'সমকাল', color: 'bg-violet-500' },
-  { value: 'naya_diganta', label: 'নয়া দিগন্ত', color: 'bg-green-500' },
-  { value: 'ittefaq', label: 'ইত্তেফাক', color: 'bg-yellow-500' },
+  { value: '', label: 'All Sources', logo: null },
+  { value: 'prothom_alo', label: 'প্রথম আলো', logo: '/prothomalo.png' },
+  { value: 'daily_star', label: 'ডেইলি স্টার', logo: '/dailystar.png' },
+  { value: 'jugantor', label: 'যুগান্তর', logo: '/jugantor.png' },
+  { value: 'samakal', label: 'সমকাল', logo: '/samakal.png' },
+  { value: 'naya_diganta', label: 'নয়া দিগন্ত', logo: '/nayadiganta.png' },
+  { value: 'ittefaq', label: 'ইত্তেফাক', logo: '/ittefaq.png' },
 ];
 
 const BIAS_OPTIONS = [
@@ -54,7 +63,7 @@ const LIMIT_OPTIONS = [
 interface DropdownOption {
   value: string;
   label: string;
-  color?: string | null;
+  logo?: string | null;
   badge?: { text: string; bg: string; textColor: string; border: string; dot: string } | null;
 }
 
@@ -63,29 +72,42 @@ interface CustomDropdownProps {
   value: string;
   onChange: (value: string) => void;
   disabled?: boolean;
+  dropdownId?: string;
+  openDropdown?: string | null;
+  setOpenDropdown?: (id: string | null) => void;
 }
 
-const CustomDropdown: React.FC<CustomDropdownProps> = ({ options, value, onChange, disabled = false }) => {
-  const [open, setOpen] = useState(false);
+const CustomDropdown: React.FC<CustomDropdownProps> = ({ options, value, onChange, disabled = false, dropdownId, openDropdown, setOpenDropdown }) => {
+  const open = dropdownId ? openDropdown === dropdownId : false;
+  const [localOpen, setLocalOpen] = useState(false);
+  const isOpen = dropdownId ? open : localOpen;
   const ref = useRef<HTMLDivElement>(null);
 
+  const setOpen = (v: boolean) => {
+    if (dropdownId && setOpenDropdown) {
+      setOpenDropdown(v ? dropdownId : null);
+    } else {
+      setLocalOpen(v);
+    }
+  };
+
   useEffect(() => {
-    if (!open) return;
+    if (!isOpen) return;
     const handler = (e: MouseEvent) => {
       if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
     };
     document.addEventListener('mousedown', handler);
     return () => document.removeEventListener('mousedown', handler);
-  }, [open]);
+  }, [isOpen]);
 
   const selected = options.find((o) => o.value === value) ?? options[0];
 
   const renderLabel = (option: DropdownOption, small = false) => {
-    if (option.color) {
+    if (option.logo) {
       return (
         <span className="flex items-center gap-2">
-          <span className={`${small ? 'w-2 h-2' : 'w-2.5 h-2.5'} rounded-full ${option.color} shrink-0`} />
-          <span className={option.value === '' ? 'text-gray-400' : 'text-white'}>{option.label}</span>
+          <img src={option.logo} alt={option.label} className={`${small ? 'w-7 h-7' : 'w-8 h-8'} rounded-md object-contain shrink-0 bg-white p-0.2`} />
+          <span className="text-white">{option.label}</span>
         </span>
       );
     }
@@ -105,12 +127,12 @@ const CustomDropdown: React.FC<CustomDropdownProps> = ({ options, value, onChang
       <button
         type="button"
         disabled={disabled}
-        onClick={() => !disabled && setOpen((p) => !p)}
+        onClick={() => !disabled && setOpen(!isOpen)}
         className={`
           w-full flex items-center justify-between gap-2
           bg-gray-800/60 border rounded-xl px-3.5 py-2.5 text-sm font-medium
           transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed
-          ${open
+          ${isOpen
             ? 'border-primary-500/60 ring-2 ring-primary-500/20 bg-gray-800/90'
             : 'border-gray-700/50 hover:border-gray-600 hover:bg-gray-800/80'
           }
@@ -121,12 +143,12 @@ const CustomDropdown: React.FC<CustomDropdownProps> = ({ options, value, onChang
         </span>
         <ChevronDown
           size={14}
-          className={`shrink-0 transition-transform duration-200 ${open ? 'rotate-180 text-primary-400' : 'text-gray-500'}`}
+          className={`shrink-0 transition-transform duration-200 ${isOpen ? 'rotate-180 text-primary-400' : 'text-gray-500'}`}
         />
       </button>
 
-      {open && (
-        <div className="absolute z-50 top-[calc(100%+6px)] left-0 right-0 rounded-xl border border-gray-700/70 bg-gray-900/95 backdrop-blur-sm shadow-2xl shadow-black/60 overflow-hidden">
+      {isOpen && (
+        <div className="absolute z-[999] top-[calc(100%+6px)] left-0 right-0 rounded-xl border border-gray-700/70 bg-gray-900/95 backdrop-blur-sm shadow-2xl shadow-black/60 overflow-hidden">
           <div className="py-1.5 max-h-60 overflow-y-auto">
             {options.map((option) => {
               const isSelected = option.value === value;
@@ -159,6 +181,8 @@ const ArticleFilters: React.FC<ArticleFiltersProps> = ({
   onClearAll,
   loading = false,
 }) => {
+  const [openDropdown, setOpenDropdown] = useState<string | null>(null);
+
   const activeFiltersCount = [
     filters.source,
     filters.is_biased,
@@ -167,7 +191,7 @@ const ArticleFilters: React.FC<ArticleFiltersProps> = ({
   ].filter(Boolean).length;
 
   return (
-    <div className="rounded-2xl border border-gray-800/60 bg-gray-900/30 backdrop-blur-sm p-5 sm:p-6 mb-6">
+    <div className="relative z-[100] rounded-2xl border border-gray-800/60 bg-gray-900/30 backdrop-blur-sm p-5 sm:p-6 mb-6">
       {/* Header */}
       <div className="flex items-center justify-between mb-5">
         <h3 className="text-sm font-medium text-gray-300 flex items-center gap-2">
@@ -193,7 +217,7 @@ const ArticleFilters: React.FC<ArticleFiltersProps> = ({
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
         {/* Source Filter */}
-        <div>
+        <div className={`relative ${openDropdown === 'source' ? 'z-100' : 'z-0'}`}>
           <label className="block text-[11px] font-medium text-gray-500 uppercase tracking-wider mb-1.5">
             Source
           </label>
@@ -202,11 +226,14 @@ const ArticleFilters: React.FC<ArticleFiltersProps> = ({
             value={filters.source}
             onChange={(v) => onFilterChange('source', v)}
             disabled={loading}
+            dropdownId="source"
+            openDropdown={openDropdown}
+            setOpenDropdown={setOpenDropdown}
           />
         </div>
 
         {/* Bias Status Filter */}
-        <div>
+        <div className={`relative ${openDropdown === 'bias' ? 'z-100' : 'z-0'}`}>
           <label className="block text-[11px] font-medium text-gray-500 uppercase tracking-wider mb-1.5">
             Bias Status
           </label>
@@ -215,6 +242,9 @@ const ArticleFilters: React.FC<ArticleFiltersProps> = ({
             value={filters.is_biased}
             onChange={(v) => onFilterChange('is_biased', v)}
             disabled={loading}
+            dropdownId="bias"
+            openDropdown={openDropdown}
+            setOpenDropdown={setOpenDropdown}
           />
         </div>
 

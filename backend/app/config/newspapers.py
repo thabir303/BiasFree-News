@@ -33,7 +33,7 @@ NEWSPAPER_CONFIGS: Dict[str, NewspaperConfig] = {
         }
     ),
     "daily_star": NewspaperConfig(
-        name="The Daily Star",
+        name="ডেইলি স্টার",
         key="daily_star",
         base_url="https://bangla.thedailystar.net",
         language="bengali",

@@ -20,7 +20,7 @@ export default function ArticleInput({ onAnalyze, loading }: ArticleInputProps) 
     const isValid = charCount >= 50;
 
     return (
-        <div className="glass-card p-6">
+        <div className="glass-card w-full p-6">
             <h2 className="text-2xl font-bold mb-4 text-primary-400">নিবন্ধ বিশ্লেষণ করুন</h2>
 
             <form onSubmit={handleSubmit} className="space-y-4">
