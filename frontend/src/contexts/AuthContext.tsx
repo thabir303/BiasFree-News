@@ -1,5 +1,7 @@
-import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import { authApi, setToken, getToken, removeToken } from '../services/api';
+import React, { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
+import { useNavigate } from 'react-router-dom';
+import toast from 'react-hot-toast';
+import { authApi, setToken, getToken, removeToken, AUTH_EXPIRED_EVENT } from '../services/api';
 import type { User, AuthContextType } from '../types';
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -12,6 +14,20 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     const [user, setUser] = useState<User | null>(null);
     const [token, setTokenState] = useState<string | null>(null);
     const [loading, setLoading] = useState(true);
+    const navigate = useNavigate();
+
+    // Listen for 401 session-expired events (from axios interceptor)
+    const handleSessionExpired = useCallback(() => {
+        setTokenState(null);
+        setUser(null);
+        toast.error('Session expired. Please login again.');
+        navigate('/login', { replace: true });
+    }, [navigate]);
+
+    useEffect(() => {
+        window.addEventListener(AUTH_EXPIRED_EVENT, handleSessionExpired);
+        return () => window.removeEventListener(AUTH_EXPIRED_EVENT, handleSessionExpired);
+    }, [handleSessionExpired]);
 
     // Initialize auth state from localStorage
     useEffect(() => {

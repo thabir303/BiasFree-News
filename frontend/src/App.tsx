@@ -1,7 +1,10 @@
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
+import { Toaster } from 'react-hot-toast';
 import { AuthProvider } from './contexts/AuthContext';
 import { ThemeProvider, useTheme } from './contexts/ThemeContext';
 import Navbar from './components/Navbar';
+import Footer from './components/Footer';
+import ErrorBoundary from './components/ErrorBoundary';
 import ProtectedRoute from './components/ProtectedRoute';
 import HomePage from './pages/HomePage';
 import ArticlesPage from './pages/ArticlesPage';
@@ -22,8 +25,9 @@ import AdminUsersPage from './pages/AdminUsersPage';
 const AppContent = () => {
   const { isDark } = useTheme();
   return (
-    <div className={`min-h-screen ${isDark ? 'app-dark' : 'app-light'}`}>
+    <div className={`min-h-screen flex flex-col ${isDark ? 'app-dark' : 'app-light'}`}>
       <Navbar />
+      <div className="flex-1">
       <Routes>
         {/* Public Routes */}
         <Route path="/" element={<HomePage />} />
@@ -81,6 +85,8 @@ const AppContent = () => {
           }
         />
       </Routes>
+      </div>
+      <Footer />
     </div>
   );
 };
@@ -90,7 +96,28 @@ function App() {
     <Router>
       <ThemeProvider>
         <AuthProvider>
-          <AppContent />
+          <ErrorBoundary>
+            <AppContent />
+          </ErrorBoundary>
+          <Toaster
+            position="top-right"
+            toastOptions={{
+              duration: 4000,
+              style: {
+                background: '#1e293b',
+                color: '#f1f5f9',
+                border: '1px solid #334155',
+                borderRadius: '12px',
+                fontSize: '14px',
+              },
+              success: {
+                iconTheme: { primary: '#34d399', secondary: '#1e293b' },
+              },
+              error: {
+                iconTheme: { primary: '#f87171', secondary: '#1e293b' },
+              },
+            }}
+          />
         </AuthProvider>
       </ThemeProvider>
     </Router>

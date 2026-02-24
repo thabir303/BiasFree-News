@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
-import { Funnel, CalendarDays, X, ChevronDown, Check } from 'lucide-react';
+import { Funnel, CalendarDays, X, ChevronDown, Check, Search } from 'lucide-react';
 import DateRangePicker from './DateRangePicker';
 
 export interface FilterState {
@@ -7,6 +7,8 @@ export interface FilterState {
   is_biased: string;
   date_from: string;
   date_to: string;
+  search: string;
+  sort_by: string;
   skip: number;
   limit: number;
 }
@@ -19,15 +21,6 @@ interface ArticleFiltersProps {
 }
 
 const today = new Date().toISOString().split('T')[0];
-
-const SOURCE_LOGO: Record<string, string> = {
-  prothom_alo: '/prothomalo.png',
-  daily_star: '/dailystar.png',
-  jugantor: '/jugantor.png',
-  samakal: '/samakal.png',
-  naya_diganta: '/nayadiganta.png',
-  ittefaq: '/ittefaq.png',
-};
 
 const SOURCE_OPTIONS = [
   { value: '', label: 'All Sources', logo: null },
@@ -188,10 +181,31 @@ const ArticleFilters: React.FC<ArticleFiltersProps> = ({
     filters.is_biased,
     filters.date_from,
     filters.date_to,
+    filters.search,
   ].filter(Boolean).length;
 
   return (
     <div className="relative z-[100] rounded-2xl border border-gray-800/60 bg-gray-900/30 backdrop-blur-sm p-5 sm:p-6 mb-6">
+      {/* Search Bar */}
+      <div className="mb-4">
+        <div className="relative">
+          <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" />
+          <input
+            type="text"
+            value={filters.search || ''}
+            onChange={(e) => onFilterChange('search', e.target.value)}
+            placeholder="Search by title or content..."
+            disabled={loading}
+            className="w-full pl-10 pr-4 py-2.5 bg-gray-800/60 border border-gray-700/50 rounded-xl text-sm text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-primary-500/30 focus:border-primary-500/50 disabled:opacity-50 transition-all"
+          />
+          {filters.search && (
+            <button onClick={() => onFilterChange('search', '')} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-300">
+              <X size={14} />
+            </button>
+          )}
+        </div>
+      </div>
+
       {/* Header */}
       <div className="flex items-center justify-between mb-5">
         <h3 className="text-sm font-medium text-gray-300 flex items-center gap-2">
@@ -265,7 +279,7 @@ const ArticleFilters: React.FC<ArticleFiltersProps> = ({
         </div>
       </div>
 
-      {/* Per Page — second row */}
+      {/* Per Page + Sort — second row */}
       <div className="mt-3 flex items-center gap-3 flex-wrap">
         <label className="text-[11px] font-medium text-gray-500 uppercase tracking-wider shrink-0">
           Per Page
@@ -283,6 +297,30 @@ const ArticleFilters: React.FC<ArticleFiltersProps> = ({
               }`}
             >
               {option.label}
+            </button>
+          ))}
+        </div>
+
+        {/* Sort Options */}
+        <div className="flex items-center gap-1.5 ml-4">
+          <label className="text-[11px] font-medium text-gray-500 uppercase tracking-wider shrink-0">Sort</label>
+          {[
+            { value: '', label: 'Newest' },
+            { value: 'oldest', label: 'Oldest' },
+            { value: 'bias_high', label: 'Bias ↓' },
+            { value: 'bias_low', label: 'Bias ↑' },
+          ].map((opt) => (
+            <button
+              key={opt.value}
+              onClick={() => onFilterChange('sort_by', opt.value)}
+              disabled={loading}
+              className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-all disabled:opacity-50 ${
+                (filters.sort_by || '') === opt.value
+                  ? 'bg-primary-500/20 border border-primary-500/40 text-primary-400'
+                  : 'bg-gray-800/60 border border-gray-700/50 text-gray-400 hover:border-gray-600'
+              }`}
+            >
+              {opt.label}
             </button>
           ))}
         </div>

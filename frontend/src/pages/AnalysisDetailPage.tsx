@@ -2,8 +2,10 @@ import { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { authApi, type UserAnalysis } from '../services/api';
 import { ChevronRight, ArrowLeft } from 'lucide-react';
+import usePageTitle from '../hooks/usePageTitle';
 
 const AnalysisDetailPage = () => {
+  usePageTitle('Analysis Detail');
   const { id } = useParams<{ id: string }>();
   const [analysis, setAnalysis] = useState<UserAnalysis | null>(null);
   const [loading, setLoading] = useState(true);

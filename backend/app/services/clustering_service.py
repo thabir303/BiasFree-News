@@ -406,6 +406,18 @@ class ClusteringService:
                     category=dominant_category,
                     created_at=datetime.utcnow(),
                 )
+
+                # Precompute pairwise similarities so we don't recompute per-request
+                pw_sims = []
+                for i in range(len(local_combined)):
+                    for j in range(i + 1, len(local_combined)):
+                        pw_sims.append({
+                            "a": cluster_articles[i].id,
+                            "b": cluster_articles[j].id,
+                            "sim": round(float(local_combined[i][j]), 4),
+                        })
+                cluster.pairwise_similarities = pw_sims
+
                 self.db.add(cluster)
                 self.db.flush()  # Get cluster.id
 
@@ -697,23 +709,30 @@ JSON ফরম্যাটে উত্তর দাও।"""
 
         articles = self.db.query(Article).filter(Article.cluster_id == cluster_id).all()
 
-        # Compute pairwise similarities if embeddings exist
+        # Use precomputed pairwise similarities if available, else compute on-the-fly
         similarities = []
-        article_embeddings = []
-        for a in articles:
-            if a.embedding:
-                article_embeddings.append(np.frombuffer(a.embedding, dtype=np.float32))
+        if cluster.pairwise_similarities:
+            similarities = [
+                {"article_a": p["a"], "article_b": p["b"], "similarity": p["sim"]}
+                for p in cluster.pairwise_similarities
+            ]
+        else:
+            # Fallback: compute from embeddings (legacy clusters without precomputed data)
+            article_embeddings = []
+            for a in articles:
+                if a.embedding:
+                    article_embeddings.append(np.frombuffer(a.embedding, dtype=np.float32))
 
-        if len(article_embeddings) >= 2:
-            emb_matrix = np.array(article_embeddings)
-            sim_matrix = cosine_similarity(emb_matrix)
-            for i in range(len(sim_matrix)):
-                for j in range(i + 1, len(sim_matrix)):
-                    similarities.append({
-                        "article_a": articles[i].id,
-                        "article_b": articles[j].id,
-                        "similarity": round(float(sim_matrix[i][j]), 4)
-                    })
+            if len(article_embeddings) >= 2:
+                emb_matrix = np.array(article_embeddings)
+                sim_matrix = cosine_similarity(emb_matrix)
+                for i in range(len(sim_matrix)):
+                    for j in range(i + 1, len(sim_matrix)):
+                        similarities.append({
+                            "article_a": articles[i].id,
+                            "article_b": articles[j].id,
+                            "similarity": round(float(sim_matrix[i][j]), 4)
+                        })
 
         return {
             "id": cluster.id,

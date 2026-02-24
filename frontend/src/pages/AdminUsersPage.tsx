@@ -3,8 +3,10 @@ import { Navigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { adminApi, type AdminUser } from '../services/api';
 import { Users, Trash2, ShieldCheck, User as UserIcon, Search, RefreshCw } from 'lucide-react';
+import usePageTitle from '../hooks/usePageTitle';
 
 const AdminUsersPage = () => {
+  usePageTitle('Admin Users');
   const { isAdmin, isAuthenticated } = useAuth();
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [total, setTotal] = useState(0);

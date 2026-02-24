@@ -1,5 +1,5 @@
 import { Link, useLocation } from 'react-router-dom';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
 import { LogOut, Sun, Moon, Users } from 'lucide-react';
@@ -9,6 +9,11 @@ const Navbar = () => {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const { user, isAuthenticated, isAdmin, logout } = useAuth();
   const { isDark, toggleTheme } = useTheme();
+
+  // Auto-close mobile menu on route change
+  useEffect(() => {
+    setIsMobileMenuOpen(false);
+  }, [location.pathname]);
 
   const navItems = [
     { path: '/', label: 'Analyze', icon: '🔍', protected: false },
@@ -188,9 +193,8 @@ const Navbar = () => {
       </div>
 
       {/* Mobile Navigation */}
-      {isMobileMenuOpen && (
-        <div className={`md:hidden border-t ${isDark ? 'border-gray-800 bg-gray-900' : 'mobile-menu-light'}`}>
-          <div className="px-2 pt-2 pb-3 space-y-1">
+      <div className={`md:hidden overflow-hidden transition-all duration-300 ease-in-out ${isMobileMenuOpen ? 'max-h-[500px] opacity-100' : 'max-h-0 opacity-0'}`}>
+        <div className={`border-t px-2 pt-2 pb-3 space-y-1 ${isDark ? 'border-gray-800 bg-gray-900' : 'mobile-menu-light'}`}>
             {visibleNavItems.map((item) => (
               <Link
                 key={item.path}
@@ -271,7 +275,6 @@ const Navbar = () => {
             )}
           </div>
         </div>
-      )}
     </nav>
   );
 };

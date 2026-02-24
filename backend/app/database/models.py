@@ -128,6 +128,7 @@ class ArticleCluster(Base):
     unified_content = Column(Text, nullable=True)
     unified_headline = Column(String(500), nullable=True)
     debiased_unified_content = Column(Text, nullable=True)
+    pairwise_similarities = Column(JSON, nullable=True)  # Precomputed [{"a": id, "b": id, "sim": float}]
     
     # Timestamps
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
@@ -174,3 +175,17 @@ class UserAnalysis(Base):
     
     def __repr__(self):
         return f"<UserAnalysis(id={self.id}, user_id={self.user_id}, title={self.title[:30] if self.title else 'N/A'})>"
+
+
+class Bookmark(Base):
+    """Model for storing user bookmarks on articles."""
+    
+    __tablename__ = "bookmarks"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    article_id = Column(Integer, ForeignKey("articles.id"), nullable=False, index=True)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    
+    def __repr__(self):
+        return f"<Bookmark(id={self.id}, user_id={self.user_id}, article_id={self.article_id})>"

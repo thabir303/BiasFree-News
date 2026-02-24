@@ -1,17 +1,40 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import type { FullProcessResponse } from '../types/index';
-import { api, authApi } from '../services/api';
+import { api, authApi, type Statistics } from '../services/api';
 import { useAuth } from '../contexts/AuthContext';
 import ArticleInput from '../components/ArticleInput';
 import ResultsDisplay from '../components/ResultsDisplay';
+import usePageTitle from '../hooks/usePageTitle';
+
+const AnimatedCounter = ({ target, duration = 1500 }: { target: number; duration?: number }) => {
+  const [count, setCount] = useState(0);
+  useEffect(() => {
+    if (target === 0) return;
+    let start = 0;
+    const step = Math.ceil(target / (duration / 16));
+    const timer = setInterval(() => {
+      start += step;
+      if (start >= target) { setCount(target); clearInterval(timer); }
+      else setCount(start);
+    }, 16);
+    return () => clearInterval(timer);
+  }, [target, duration]);
+  return <>{count.toLocaleString()}</>;
+};
 
 const HomePage = () => {
+  usePageTitle('Analyze');
   const [results, setResults] = useState<FullProcessResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [stats, setStats] = useState<Statistics | null>(null);
   const { isAuthenticated } = useAuth();
   const navigate = useNavigate();
+
+  useEffect(() => {
+    api.getStatistics().then(setStats).catch(() => {});
+  }, []);
 
   const handleAnalyze = async (content: string, title: string) => {
     // Check authentication before analyzing
@@ -89,12 +112,23 @@ const HomePage = () => {
               ℹ️ Please <button onClick={() => navigate('/login')} className="underline font-semibold">login</button> to analyze articles
             </div>
           )}
-          {/* <p className="text-xl text-gray-400 mb-2">
-            বাংলা সংবাদ নিরপেক্ষ ও বিশ্বাসযোগ্য করুন
-          </p> */}
-          {/* <p className="text-gray-500">
-            Detect and remove bias from Bengali news articles powered by AI
-          </p> */}
+
+          {/* Stats Banner */}
+          {stats && (
+            <div className="mt-6 flex flex-wrap justify-center gap-6">
+              {[
+                { label: 'Articles Analyzed', value: stats.processed_articles, icon: '📊' },
+                { label: 'Biases Detected', value: stats.biased_articles, icon: '⚠️' },
+                { label: 'Total Articles', value: stats.total_articles, icon: '📰' },
+              ].map((s) => (
+                <div key={s.label} className="flex items-center gap-2 px-4 py-2 rounded-xl bg-gray-800/40 border border-gray-700/50">
+                  <span className="text-lg">{s.icon}</span>
+                  <span className="text-xl font-bold text-white"><AnimatedCounter target={s.value} /></span>
+                  <span className="text-xs text-gray-400">{s.label}</span>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
 
         {/* Features */}

@@ -1,41 +1,52 @@
 import { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { api, type Article, type MergedArticle } from '../services/api';
-
-const SOURCE_LABELS: Record<string, string> = {
-  prothom_alo: 'প্রথম আলো',
-  daily_star: 'ডেইলি স্টার',
-  jugantor: 'যুগান্তর',
-  samakal: 'সমকাল',
-  naya_diganta: 'নয়া দিগন্ত',
-  ittefaq: 'ইত্তেফাক',
-};
-
-const SOURCE_COLORS: Record<string, string> = {
-  prothom_alo: 'bg-orange-500',
-  daily_star: 'bg-sky-500',
-  jugantor: 'bg-rose-500',
-  samakal: 'bg-violet-500',
-  naya_diganta: 'bg-green-500',
-  ittefaq: 'bg-teal-500',
-};
-
-const SOURCE_TEXT_COLORS: Record<string, string> = {
-  prothom_alo: 'text-orange-400',
-  daily_star: 'text-sky-400',
-  jugantor: 'text-rose-400',
-  samakal: 'text-violet-400',
-  naya_diganta: 'text-green-400',
-  ittefaq: 'text-teal-400',
-};
+import { api, authApi, type Article } from '../services/api';
+import { SOURCE_LABELS, SOURCE_COLORS, SOURCE_TEXT_COLORS } from '../constants/sources';
+import { useAuth } from '../contexts/AuthContext';
+import usePageTitle from '../hooks/usePageTitle';
 
 const ArticleDetailPage = () => {
+  usePageTitle('Article Detail');
   const { id } = useParams<{ id: string }>();
   const [article, setArticle] = useState<Article | null>(null);
   const [loading, setLoading] = useState(true);
   const [processing, setProcessing] = useState(false);
   const [viewMode, setViewMode] = useState<'split' | 'diff'>('split');
   const [expandedMergedId, setExpandedMergedId] = useState<number | null>(null);
+  const [toast, setToast] = useState<{ type: 'success' | 'error' | 'info'; message: string } | null>(null);
+  const [isBookmarked, setIsBookmarked] = useState(false);
+  const { isAuthenticated } = useAuth();
+
+  const showToast = (type: 'success' | 'error' | 'info', message: string) => {
+    setToast({ type, message });
+    setTimeout(() => setToast(null), 5000);
+  };
+
+  // Check if article is bookmarked
+  useEffect(() => {
+    if (isAuthenticated && id) {
+      authApi.getBookmarks().then(res => {
+        setIsBookmarked(res.bookmarks.some(b => b.article_id === parseInt(id)));
+      }).catch(() => {});
+    }
+  }, [isAuthenticated, id]);
+
+  const toggleBookmark = async () => {
+    if (!isAuthenticated || !id) return;
+    try {
+      if (isBookmarked) {
+        await authApi.removeBookmark(parseInt(id));
+        setIsBookmarked(false);
+        showToast('success', 'Bookmark removed');
+      } else {
+        await authApi.addBookmark(parseInt(id));
+        setIsBookmarked(true);
+        showToast('success', 'Article bookmarked!');
+      }
+    } catch {
+      showToast('error', 'Failed to update bookmark');
+    }
+  };
 
   useEffect(() => {
     if (id) {
@@ -64,7 +75,25 @@ const ArticleDetailPage = () => {
       setArticle(updatedArticle);
     } catch (error) {
       console.error('Failed to analyze article:', error);
-      alert('Failed to analyze article. Please try again.');
+      showToast('error', 'Failed to analyze article. Please try again.');
+    } finally {
+      setProcessing(false);
+    }
+  };
+
+  const handleReanalyze = async () => {
+    if (!id || processing) return;
+
+    setProcessing(true);
+    try {
+      await api.reprocessArticle(parseInt(id));
+      // Refetch the full article to get updated data
+      const refreshed = await api.getArticle(parseInt(id));
+      setArticle(refreshed);
+      showToast('success', 'Article re-analyzed successfully!');
+    } catch (error) {
+      console.error('Failed to re-analyze article:', error);
+      showToast('error', 'Failed to re-analyze article. Please try again.');
     } finally {
       setProcessing(false);
     }
@@ -192,7 +221,7 @@ const ArticleDetailPage = () => {
           title={tooltipContent}
         >
           {span.text}
-          <span className="invisible group-hover:visible absolute z-10 w-64 p-3 mt-2 text-sm bg-gray-900 border border-gray-700 rounded-lg shadow-xl -left-1/2 transform -translate-x-1/2">
+          <span className="invisible group-hover:visible absolute z-10 w-64 p-3 mt-2 text-sm bg-gray-900 border border-gray-700 rounded-lg shadow-xl left-0 top-full">
             {type === 'biased' ? (
               <>
                 <div className="font-bold text-red-400 mb-1">Biased Term</div>
@@ -256,6 +285,19 @@ const ArticleDetailPage = () => {
 
   return (
     <div className="min-h-screen py-10 px-4 sm:px-6 lg:px-8">
+      {/* Toast Notification */}
+      {toast && (
+        <div className={`fixed top-20 right-4 z-[9999] max-w-md px-4 py-3 rounded-xl border shadow-xl backdrop-blur-sm transition-all duration-300 animate-[slideIn_0.3s_ease-out] ${
+          toast.type === 'error' ? 'bg-red-500/15 border-red-500/30 text-red-300' :
+          toast.type === 'success' ? 'bg-green-500/15 border-green-500/30 text-green-300' :
+          'bg-blue-500/15 border-blue-500/30 text-blue-300'
+        }`}>
+          <div className="flex items-start gap-2">
+            <p className="text-sm flex-1">{toast.message}</p>
+            <button onClick={() => setToast(null)} className="text-gray-400 hover:text-white shrink-0 mt-0.5">✕</button>
+          </div>
+        </div>
+      )}
       <div className="max-w-7xl mx-auto">
         {/* Breadcrumb Navigation */}
         <nav className="flex items-center gap-1.5 text-xs text-gray-500 mb-8">
@@ -310,6 +352,25 @@ const ArticleDetailPage = () => {
                     🔗 Source
                   </a>
                 )}
+                <button
+                  onClick={() => {
+                    navigator.clipboard.writeText(window.location.href);
+                    showToast('success', 'Link copied to clipboard!');
+                  }}
+                  className="px-3 py-1 bg-gray-800 rounded-full hover:bg-gray-700 transition-colors cursor-pointer"
+                >
+                  📋 Copy Link
+                </button>
+                {isAuthenticated && (
+                  <button
+                    onClick={toggleBookmark}
+                    className={`px-3 py-1 rounded-full transition-colors cursor-pointer ${
+                      isBookmarked ? 'bg-yellow-500/20 text-yellow-400 border border-yellow-500/30' : 'bg-gray-800 hover:bg-gray-700'
+                    }`}
+                  >
+                    {isBookmarked ? '★ Saved' : '☆ Save'}
+                  </button>
+                )}
                 {article.cluster_id && article.cluster_info && (
                   <span className="px-3 py-1 bg-violet-500/10 text-violet-400 border border-violet-500/30 rounded-full">
                     🔗 Merged from {article.cluster_info.article_count} articles ({article.cluster_info.sources.length} sources)
@@ -354,6 +415,27 @@ const ArticleDetailPage = () => {
                   <div className="text-2xl font-bold text-green-400">✅</div>
                   <div className="text-xs mt-1 text-green-400">No Bias Detected</div>
                 </div>
+              )}
+
+              {/* Re-analyze button for already-processed articles */}
+              {article.processed && isAuthenticated && (
+                <button
+                  onClick={handleReanalyze}
+                  disabled={processing}
+                  className="px-5 py-2.5 bg-gray-800 hover:bg-gray-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-gray-300 hover:text-white rounded-xl font-medium transition-colors flex items-center space-x-2 border border-gray-700 hover:border-gray-600 text-sm"
+                >
+                  {processing ? (
+                    <>
+                      <div className="animate-spin rounded-full h-4 w-4 border-t-2 border-b-2 border-white"></div>
+                      <span>Re-analyzing...</span>
+                    </>
+                  ) : (
+                    <>
+                      <span>🔄</span>
+                      <span>Check for Bias</span>
+                    </>
+                  )}
+                </button>
               )}
             </div>
           </div>
@@ -612,14 +694,15 @@ const ArticleDetailPage = () => {
                           content: article.cluster_info.unified_content,
                           title: article.cluster_info.unified_headline || article.title || undefined,
                         });
-                        alert(
+                        showToast(
+                          result.analysis.is_biased ? 'info' : 'success',
                           result.analysis.is_biased
-                            ? `⚠️ Bias Detected!\nScore: ${result.analysis.bias_score}%\n${result.analysis.summary}`
-                            : `✅ No significant bias detected.\n${result.analysis.summary}`
+                            ? `⚠️ Bias Detected! Score: ${result.analysis.bias_score}% — ${result.analysis.summary}`
+                            : `✅ No significant bias detected. ${result.analysis.summary}`
                         );
                       } catch (err) {
                         console.error('Failed to analyze unified content:', err);
-                        alert('Bias analysis failed. Please try again.');
+                        showToast('error', 'Bias analysis failed. Please try again.');
                       }
                     }}
                     className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium bg-violet-500/10 text-violet-400 border border-violet-500/20 hover:bg-violet-500/20 hover:border-violet-500/40 transition-all"

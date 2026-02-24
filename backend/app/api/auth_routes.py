@@ -9,7 +9,7 @@ from app.database.database import get_db
 from app.models.schemas import UserSignup, UserSignin, TokenResponse, UserResponse, CategoryPreferencesRequest, CategoryPreferencesResponse, UserAnalysisCreate, UserAnalysisResponse, UserAnalysesListResponse, ForgotPasswordRequest, VerifyOtpRequest, ResetPasswordRequest, UpdateUsernameRequest
 from app.services.auth_service import AuthService, get_current_user
 from app.services.email_service import email_service
-from app.database.models import User, UserAnalysis
+from app.database.models import User, UserAnalysis, Bookmark, Article
 from app.config import settings
 import logging
 import random
@@ -697,3 +697,76 @@ async def admin_delete_user(
     db.commit()
     
     return {"message": f"User '{target_user.username}' has been permanently deleted. They will need to sign up again to access the platform."}
+
+
+# ============================================
+# Bookmark Endpoints
+# ============================================
+
+@router.get("/bookmarks")
+async def get_bookmarks(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+    skip: int = 0,
+    limit: int = 50,
+):
+    """Get all bookmarked article IDs for the current user."""
+    bookmarks = (
+        db.query(Bookmark)
+        .filter(Bookmark.user_id == current_user.id)
+        .order_by(Bookmark.created_at.desc())
+        .offset(skip)
+        .limit(limit)
+        .all()
+    )
+    total = db.query(Bookmark).filter(Bookmark.user_id == current_user.id).count()
+    return {
+        "bookmarks": [{"id": b.id, "article_id": b.article_id, "created_at": b.created_at.isoformat()} for b in bookmarks],
+        "total": total,
+    }
+
+
+@router.post("/bookmarks/{article_id}", status_code=status.HTTP_201_CREATED)
+async def add_bookmark(
+    article_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Bookmark an article."""
+    # Check article exists
+    article = db.query(Article).filter(Article.id == article_id).first()
+    if not article:
+        raise HTTPException(status_code=404, detail="Article not found")
+    
+    # Check if already bookmarked
+    existing = db.query(Bookmark).filter(
+        Bookmark.user_id == current_user.id,
+        Bookmark.article_id == article_id,
+    ).first()
+    if existing:
+        return {"message": "Already bookmarked", "bookmark_id": existing.id}
+    
+    bookmark = Bookmark(user_id=current_user.id, article_id=article_id)
+    db.add(bookmark)
+    db.commit()
+    db.refresh(bookmark)
+    return {"message": "Bookmarked", "bookmark_id": bookmark.id}
+
+
+@router.delete("/bookmarks/{article_id}", status_code=status.HTTP_200_OK)
+async def remove_bookmark(
+    article_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Remove a bookmark."""
+    bookmark = db.query(Bookmark).filter(
+        Bookmark.user_id == current_user.id,
+        Bookmark.article_id == article_id,
+    ).first()
+    if not bookmark:
+        raise HTTPException(status_code=404, detail="Bookmark not found")
+    
+    db.delete(bookmark)
+    db.commit()
+    return {"message": "Bookmark removed"}

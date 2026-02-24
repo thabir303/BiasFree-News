@@ -3,26 +3,11 @@ import { useParams, Link } from 'react-router-dom';
 import { api, type ClusterDetail, type PairwiseSimilarity } from '../services/api';
 import { useAuth } from '../contexts/AuthContext';
 import { ArrowLeft, Layers, ExternalLink, Loader2, Shield } from 'lucide-react';
-
-const SOURCE_LABELS: Record<string, string> = {
-  prothom_alo: 'প্রথম আলো',
-  daily_star: 'ডেইলি স্টার',
-  jugantor: 'যুগান্তর',
-  samakal: 'সমকাল',
-  naya_diganta: 'নয়া দিগন্ত',
-  ittefaq: 'ইত্তেফাক',
-};
-
-const SOURCE_COLORS: Record<string, string> = {
-  prothom_alo: 'bg-orange-500',
-  daily_star: 'bg-sky-500',
-  jugantor: 'bg-rose-500',
-  samakal: 'bg-violet-500',
-  naya_diganta: 'bg-green-500',
-  ittefaq: 'bg-teal-500',
-};
+import { SOURCE_LABELS, SOURCE_COLORS } from '../constants/sources';
+import usePageTitle from '../hooks/usePageTitle';
 
 const ClusterDetailPage = () => {
+  usePageTitle('Cluster Detail');
   const { id } = useParams<{ id: string }>();
   const { isAuthenticated } = useAuth();
   const [cluster, setCluster] = useState<ClusterDetail | null>(null);

@@ -1,5 +1,9 @@
 """
-Enhanced API routes for batch bias detection with TOON format optimization.
+⚠️ DEPRECATED — This file is NOT mounted in main.py.
+Batch TOON endpoints have been consolidated into routes_enhanced.py.
+Kept for reference only. Do not add new endpoints here.
+
+Original: Enhanced API routes for batch bias detection with TOON format optimization.
 Supports processing up to 20 articles in a single request with 30-60% token reduction.
 """
 

@@ -264,7 +264,9 @@ async def get_articles(
     source: Optional[str] = Query(None, description="Filter by news source"),
     category: Optional[str] = Query(None, description="Filter by category (রাজনীতি, বিশ্ব, মতামত, বাংলাদেশ)"),
     date_from: Optional[str] = Query(None, description="Filter articles published on or after this date (YYYY-MM-DD)"),
-    date_to: Optional[str] = Query(None, description="Filter articles published on or before this date (YYYY-MM-DD)")
+    date_to: Optional[str] = Query(None, description="Filter articles published on or before this date (YYYY-MM-DD)"),
+    search: Optional[str] = Query(None, description="Search articles by title (case-insensitive partial match)"),
+    sort_by: Optional[str] = Query(None, description="Sort by: newest, oldest, bias_high, bias_low"),
 ):
     """
     Get articles with filtering and pagination.
@@ -302,12 +304,27 @@ async def get_articles(
                 query = query.filter(Article.published_date <= dt)
             except ValueError:
                 raise HTTPException(status_code=400, detail="date_to must be YYYY-MM-DD")
+        if search:
+            query = query.filter(
+                (Article.title.ilike(f"%{search}%")) |
+                (Article.original_content.ilike(f"%{search}%"))
+            )
         
         # Get total count
         total = query.count()
         
+        # Apply sorting
+        if sort_by == 'oldest':
+            query = query.order_by(Article.created_at.asc())
+        elif sort_by == 'bias_high':
+            query = query.order_by(Article.bias_score.desc().nullslast())
+        elif sort_by == 'bias_low':
+            query = query.order_by(Article.bias_score.asc().nullslast())
+        else:  # default: newest
+            query = query.order_by(Article.created_at.desc())
+        
         # Get articles with pagination
-        articles = query.order_by(Article.created_at.desc()).offset(skip).limit(limit).all()
+        articles = query.offset(skip).limit(limit).all()
         
         # Convert to response format
         result = []
@@ -388,8 +405,6 @@ async def get_article(article_id: int, db: Session = Depends(get_db)):
         # ── Populate cluster info if article belongs to a cluster ──
         if article.cluster_id:
             from app.database.models import ArticleCluster
-            import numpy as np
-            from sklearn.metrics.pairwise import cosine_similarity as cos_sim
 
             cluster = db.query(ArticleCluster).filter(
                 ArticleCluster.id == article.cluster_id
@@ -400,19 +415,21 @@ async def get_article(article_id: int, db: Session = Depends(get_db)):
                     Article.cluster_id == article.cluster_id
                 ).all()
 
-                # Compute pairwise similarities against this article
-                this_emb = None
-                if article.embedding:
-                    this_emb = np.frombuffer(article.embedding, dtype=np.float32).reshape(1, -1)
+                # Build similarity lookup from precomputed data
+                sim_lookup: Dict[tuple, float] = {}
+                if cluster.pairwise_similarities:
+                    for p in cluster.pairwise_similarities:
+                        sim_lookup[(p["a"], p["b"])] = p["sim"]
+                        sim_lookup[(p["b"], p["a"])] = p["sim"]
 
                 siblings_info = []
                 for sib in sibling_articles:
                     if sib.id == article.id:
                         continue  # skip self
                     sim_pct = None
-                    if this_emb is not None and sib.embedding:
-                        sib_emb = np.frombuffer(sib.embedding, dtype=np.float32).reshape(1, -1)
-                        sim_pct = round(float(cos_sim(this_emb, sib_emb)[0][0]) * 100, 1)
+                    pre = sim_lookup.get((article.id, sib.id))
+                    if pre is not None:
+                        sim_pct = round(pre * 100, 1)
 
                     siblings_info.append({
                         "id": sib.id,
@@ -541,10 +558,11 @@ async def process_article_endpoint(
 async def reprocess_article(
     article_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_admin)
+    current_user: User = Depends(require_authenticated)
 ):
     """
-    Reprocess a specific article (useful after fixing bugs).
+    Reprocess a specific article — re-run bias analysis from scratch.
+    Available to any authenticated user.
     
     - **article_id**: Article ID to reprocess
     """
@@ -787,6 +805,11 @@ async def get_scheduler_logs(
 async def get_newspapers():
     """Get list of configured newspapers."""
     try:
+        # Cache for 5 minutes — newspaper config rarely changes
+        cached = _get_cached("newspapers")
+        if cached:
+            return cached
+
         from app.config.newspapers import NEWSPAPER_CONFIGS
         
         newspapers = []
@@ -799,11 +822,27 @@ async def get_newspapers():
                 "enabled": config.enabled
             })
         
-        return {"newspapers": newspapers}
+        result = {"newspapers": newspapers}
+        _set_cached("newspapers", result, ttl=300)
+        return result
     
     except Exception as e:
         logger.error(f"Get newspapers error: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Failed to fetch newspapers: {str(e)}")
+
+
+# ── Simple in-memory TTL cache ──────────────────────────────────────
+import time as _time
+_cache: Dict[str, Any] = {}  # key -> {"data": ..., "expires": float}
+
+def _get_cached(key: str) -> Any:
+    entry = _cache.get(key)
+    if entry and entry["expires"] > _time.time():
+        return entry["data"]
+    return None
+
+def _set_cached(key: str, data: Any, ttl: int = 30):
+    _cache[key] = {"data": data, "expires": _time.time() + ttl}
 
 
 @router.get("/statistics")
@@ -813,30 +852,145 @@ async def get_statistics(
 ):
     """Get overall statistics about scraped and processed articles."""
     try:
-        total_articles = db.query(Article).count()
-        processed_articles = db.query(Article).filter(Article.processed == True).count()
-        biased_articles = db.query(Article).filter(Article.is_biased == True).count()
-        
-        # Count by source
-        by_source = {}
-        sources = db.query(Article.source).distinct().all()
-        for (source,) in sources:
-            count = db.query(Article).filter(Article.source == source).count()
-            by_source[source] = count
-        
-        return {
+        # Check cache first (30s TTL)
+        cached = _get_cached("statistics")
+        if cached:
+            return cached
+
+        from sqlalchemy import func, case
+
+        # Single query: total, processed, biased counts + per-source counts
+        stats_row = db.query(
+            func.count(Article.id).label("total"),
+            func.sum(case((Article.processed == True, 1), else_=0)).label("processed"),
+            func.sum(case((Article.is_biased == True, 1), else_=0)).label("biased"),
+        ).one()
+
+        total_articles = stats_row.total or 0
+        processed_articles = int(stats_row.processed or 0)
+        biased_articles = int(stats_row.biased or 0)
+
+        # GROUP BY source instead of N+1 queries
+        source_rows = db.query(
+            Article.source, func.count(Article.id)
+        ).group_by(Article.source).all()
+        by_source = {src: cnt for src, cnt in source_rows}
+
+        result = {
             "total_articles": total_articles,
             "processed_articles": processed_articles,
-            "processed_count": processed_articles,  # Frontend expects this
+            "processed_count": processed_articles,
             "biased_articles": biased_articles,
-            "biased_count": biased_articles,  # Frontend expects this
+            "biased_count": biased_articles,
             "unprocessed_articles": total_articles - processed_articles,
             "by_source": by_source
         }
-    
+        _set_cached("statistics", result, ttl=30)
+        return result
+
     except Exception as e:
         logger.error(f"Get statistics error: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Failed to fetch statistics: {str(e)}")
+
+
+@router.get("/analytics/visualization")
+async def get_visualization_data(
+    days: int = Query(30, ge=1, le=365),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_authenticated)
+):
+    """Get data for visualization charts: bias distribution, source comparison, time-series, category breakdown."""
+    try:
+        from sqlalchemy import func, case
+
+        # 1. Bias score distribution (histogram buckets)
+        processed_articles = db.query(Article.bias_score).filter(
+            Article.processed == True,
+            Article.bias_score.isnot(None)
+        ).all()
+        scores = [float(r[0]) for r in processed_articles if r[0] is not None]
+
+        buckets = [0] * 10  # 0-9, 10-19, ..., 90-100
+        for s in scores:
+            idx = min(int(s // 10), 9)
+            buckets[idx] += 1
+        bias_distribution = [{"range": f"{i*10}-{i*10+9}" if i < 9 else "90-100", "count": buckets[i]} for i in range(10)]
+
+        # 2. Source-level bias comparison
+        source_stats = db.query(
+            Article.source,
+            func.count(Article.id).label("total"),
+            func.avg(case((Article.processed == True, Article.bias_score), else_=None)).label("avg_bias"),
+            func.sum(case((Article.is_biased == True, 1), else_=0)).label("biased_count"),
+            func.sum(case((Article.processed == True, 1), else_=0)).label("processed_count"),
+        ).group_by(Article.source).all()
+
+        source_comparison = []
+        for row in source_stats:
+            source_comparison.append({
+                "source": row.source,
+                "total": row.total,
+                "avg_bias": round(float(row.avg_bias or 0), 2),
+                "biased_count": int(row.biased_count or 0),
+                "processed_count": int(row.processed_count or 0),
+                "bias_rate": round(int(row.biased_count or 0) / max(int(row.processed_count or 0), 1) * 100, 1),
+            })
+
+        # 3. Time-series: articles per day + bias rate over time
+        cutoff = datetime.utcnow() - timedelta(days=days)
+        daily_rows = db.query(
+            func.date(Article.scraped_at).label("day"),
+            func.count(Article.id).label("total"),
+            func.sum(case((Article.is_biased == True, 1), else_=0)).label("biased"),
+            func.sum(case((Article.processed == True, 1), else_=0)).label("processed"),
+        ).filter(
+            Article.scraped_at >= cutoff,
+            Article.scraped_at.isnot(None),
+        ).group_by("day").order_by("day").all()
+
+        time_series = []
+        for row in daily_rows:
+            if row.day is None:
+                continue
+            day_str = row.day if isinstance(row.day, str) else row.day.isoformat()
+            time_series.append({
+                "date": day_str,
+                "total": row.total,
+                "biased": int(row.biased or 0),
+                "processed": int(row.processed or 0),
+                "bias_rate": round(int(row.biased or 0) / max(int(row.processed or 0), 1) * 100, 1),
+            })
+
+        # 4. Per-category breakdown
+        category_rows = db.query(
+            Article.category,
+            func.count(Article.id).label("total"),
+            func.sum(case((Article.is_biased == True, 1), else_=0)).label("biased"),
+            func.sum(case((Article.processed == True, 1), else_=0)).label("processed"),
+            func.avg(case((Article.processed == True, Article.bias_score), else_=None)).label("avg_bias"),
+        ).filter(Article.category.isnot(None)).group_by(Article.category).all()
+
+        category_breakdown = []
+        for row in category_rows:
+            category_breakdown.append({
+                "category": row.category,
+                "total": row.total,
+                "biased": int(row.biased or 0),
+                "processed": int(row.processed or 0),
+                "avg_bias": round(float(row.avg_bias or 0), 2),
+                "bias_rate": round(int(row.biased or 0) / max(int(row.processed or 0), 1) * 100, 1),
+            })
+
+        return {
+            "bias_distribution": bias_distribution,
+            "source_comparison": source_comparison,
+            "time_series": time_series,
+            "category_breakdown": category_breakdown,
+        }
+
+    except Exception as e:
+        logger.error(f"Visualization data error: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to fetch visualization data: {str(e)}")
 
 
 # Enhanced batch processing routes with TOON format optimization
@@ -1132,8 +1286,13 @@ async def get_clusters(
 async def get_clustering_stats(db: Session = Depends(get_db)):
     """Get article clustering statistics."""
     try:
+        cached = _get_cached("clustering_stats")
+        if cached:
+            return cached
         service = ClusteringService(db)
-        return service.get_clustering_stats()
+        result = service.get_clustering_stats()
+        _set_cached("clustering_stats", result, ttl=60)
+        return result
     except Exception as e:
         logger.error(f"Clustering stats error: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Failed to fetch clustering stats: {str(e)}")

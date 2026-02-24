@@ -2,21 +2,18 @@ import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { authApi } from '../services/api';
 import { GripVertical, Save, CheckCircle, ArrowUp, ArrowDown, User, Mail, Shield, ListOrdered, Pencil, X, Check } from 'lucide-react';
-
-const CATEGORIES = [
-  { key: 'রাজনীতি', label: 'রাজনীতি', sublabel: 'Politics', icon: '🏛️', gradient: 'from-blue-500 to-indigo-600' },
-  { key: 'বিশ্ব', label: 'বিশ্ব', sublabel: 'World', icon: '🌍', gradient: 'from-emerald-500 to-teal-600' },
-  { key: 'মতামত', label: 'মতামত', sublabel: 'Opinion', icon: '💬', gradient: 'from-amber-500 to-orange-600' },
-  { key: 'বাংলাদেশ', label: 'বাংলাদেশ', sublabel: 'Bangladesh', icon: '🇧🇩', gradient: 'from-red-500 to-rose-600' },
-];
+import { CATEGORIES } from '../constants/sources';
+import usePageTitle from '../hooks/usePageTitle';
 
 const ProfilePage = () => {
+  usePageTitle('Profile');
   const { user, updateUser } = useAuth();
   const [orderedCategories, setOrderedCategories] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [loading, setLoading] = useState(true);
   const [draggedIdx, setDraggedIdx] = useState<number | null>(null);
+  const [dragOverIdx, setDragOverIdx] = useState<number | null>(null);
 
   // Username change state
   const [editingUsername, setEditingUsername] = useState(false);
@@ -68,6 +65,7 @@ const ProfilePage = () => {
 
   const handleDragOver = (e: React.DragEvent, idx: number) => {
     e.preventDefault();
+    setDragOverIdx(idx);
     if (draggedIdx === null || draggedIdx === idx) return;
     const newOrder = [...orderedCategories];
     const [dragged] = newOrder.splice(draggedIdx, 1);
@@ -79,6 +77,7 @@ const ProfilePage = () => {
 
   const handleDragEnd = () => {
     setDraggedIdx(null);
+    setDragOverIdx(null);
   };
 
   const handleSave = async () => {
@@ -300,7 +299,9 @@ const ProfilePage = () => {
                   onDragEnd={handleDragEnd}
                   className={`flex items-center gap-3 p-3.5 rounded-xl border transition-all duration-200 cursor-grab active:cursor-grabbing ${
                     draggedIdx === idx
-                      ? 'border-primary-500/50 bg-primary-500/5 scale-[1.02] shadow-lg shadow-primary-500/10'
+                      ? 'border-primary-500/50 bg-primary-500/5 scale-[1.02] shadow-lg shadow-primary-500/10 opacity-60'
+                      : dragOverIdx === idx && draggedIdx !== null
+                      ? 'border-primary-400/60 bg-primary-500/10 ring-2 ring-primary-500/20'
                       : 'border-gray-800/60 bg-gray-900/60 hover:border-gray-700 hover:bg-gray-900/80'
                   }`}
                 >

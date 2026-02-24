@@ -1,33 +1,10 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Link } from 'react-router-dom';
-import { api, type ArticleCluster, type ClusteringStats } from '../services/api';
+import { api, authApi, type ArticleCluster, type ClusteringStats } from '../services/api';
 import { useAuth } from '../contexts/AuthContext';
 import { ChevronDown, Layers, BarChart3, RefreshCw, Loader2 } from 'lucide-react';
-
-const SOURCE_LABELS: Record<string, string> = {
-  prothom_alo: 'প্রথম আলো',
-  daily_star: 'ডেইলি স্টার',
-  jugantor: 'যুগান্তর',
-  samakal: 'সমকাল',
-  naya_diganta: 'নয়া দিগন্ত',
-  ittefaq: 'ইত্তেফাক',
-};
-
-const SOURCE_COLORS: Record<string, string> = {
-  prothom_alo: 'bg-orange-500',
-  daily_star: 'bg-sky-500',
-  jugantor: 'bg-rose-500',
-  samakal: 'bg-violet-500',
-  naya_diganta: 'bg-green-500',
-  ittefaq: 'bg-teal-500',
-};
-
-const CATEGORIES = [
-  { key: 'রাজনীতি', label: 'রাজনীতি', icon: '🏛️' },
-  { key: 'বিশ্ব', label: 'বিশ্ব', icon: '🌍' },
-  { key: 'মতামত', label: 'মতামত', icon: '💬' },
-  { key: 'বাংলাদেশ', label: 'বাংলাদেশ', icon: '🇧🇩' },
-];
+import { CATEGORIES, SOURCE_LABELS, SOURCE_COLORS } from '../constants/sources';
+import usePageTitle from '../hooks/usePageTitle';
 
 /* ─── Skeleton ─── */
 const ClusterSkeleton = () => (
@@ -43,7 +20,8 @@ const ClusterSkeleton = () => (
 );
 
 const ClustersPage = () => {
-  const { isAdmin } = useAuth();
+  usePageTitle('Clusters');
+  const { isAdmin, isAuthenticated } = useAuth();
   const [clusters, setClusters] = useState<ArticleCluster[]>([]);
   const [total, setTotal] = useState(0);
   const [stats, setStats] = useState<ClusteringStats | null>(null);
@@ -52,7 +30,33 @@ const ClustersPage = () => {
   const [showStats, setShowStats] = useState(false);
   const [page, setPage] = useState(0);
   const [categoryFilter, setCategoryFilter] = useState<string>('');
+  const [categoryOrder, setCategoryOrder] = useState<string[]>([]);
   const limit = 12;
+
+  useEffect(() => {
+    // Fetch category preferences
+    if (isAuthenticated) {
+      authApi.getCategoryPreferences().then(prefs => {
+        if (prefs.categories?.length) {
+          const remaining = CATEGORIES.map(c => c.key).filter(k => !prefs.categories.includes(k));
+          setCategoryOrder([...prefs.categories, ...remaining]);
+        } else {
+          setCategoryOrder(CATEGORIES.map(c => c.key));
+        }
+      }).catch(() => setCategoryOrder(CATEGORIES.map(c => c.key)));
+    } else {
+      setCategoryOrder(CATEGORIES.map(c => c.key));
+    }
+  }, [isAuthenticated]);
+
+  const sortedCategories = useMemo(() => {
+    if (categoryOrder.length === 0) return CATEGORIES;
+    return [...CATEGORIES].sort((a, b) => {
+      const idxA = categoryOrder.indexOf(a.key);
+      const idxB = categoryOrder.indexOf(b.key);
+      return (idxA === -1 ? 999 : idxA) - (idxB === -1 ? 999 : idxB);
+    });
+  }, [categoryOrder]);
 
   useEffect(() => {
     fetchClusters();
@@ -212,7 +216,7 @@ const ClustersPage = () => {
           >
             All
           </button>
-          {CATEGORIES.map((cat) => (
+          {sortedCategories.map((cat) => (
             <button
               key={cat.key}
               onClick={() => { setCategoryFilter(cat.key); setPage(0); }}

@@ -8,8 +8,8 @@ import type {
     User,
 } from '../types/index';
 
-const API_BASE_URL = 'http://localhost:8000/api';
-const AUTH_BASE_URL = 'http://localhost:8000/auth';
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api';
+const AUTH_BASE_URL = import.meta.env.VITE_AUTH_BASE_URL || 'http://localhost:8000/auth';
 
 // Token management
 export const getToken = (): string | null => {
@@ -47,14 +47,15 @@ apiClient.interceptors.request.use(
 );
 
 // Response interceptor to handle 401 errors
+// Custom event for 401 — consumed by AuthContext to navigate without hard reload
+export const AUTH_EXPIRED_EVENT = 'auth:session-expired';
+
 apiClient.interceptors.response.use(
     (response) => response,
     (error) => {
         if (error.response?.status === 401) {
-            // Token expired or invalid, remove it
             removeToken();
-            // Optionally redirect to login
-            window.location.href = '/login';
+            window.dispatchEvent(new Event(AUTH_EXPIRED_EVENT));
         }
         return Promise.reject(error);
     }
@@ -189,6 +190,22 @@ export const authApi = {
     // Delete a manual analysis
     deleteAnalysis: async (id: number): Promise<void> => {
         await authClient.delete(`/analyses/${id}`);
+    },
+
+    // Bookmarks
+    getBookmarks: async (): Promise<{ bookmarks: { id: number; article_id: number; created_at: string }[]; total: number }> => {
+        const response = await authClient.get<{ bookmarks: { id: number; article_id: number; created_at: string }[]; total: number }>('/bookmarks');
+        return response.data;
+    },
+
+    addBookmark: async (articleId: number): Promise<{ message: string; bookmark_id: number }> => {
+        const response = await authClient.post<{ message: string; bookmark_id: number }>(`/bookmarks/${articleId}`);
+        return response.data;
+    },
+
+    removeBookmark: async (articleId: number): Promise<{ message: string }> => {
+        const response = await authClient.delete<{ message: string }>(`/bookmarks/${articleId}`);
+        return response.data;
     },
 };
 
@@ -455,6 +472,8 @@ export const api = {
         limit?: number;
         date_from?: string;
         date_to?: string;
+        search?: string;
+        sort_by?: string;
     }): Promise<ArticlesResponse> => {
         const response = await apiClient.get<ArticlesResponse>('/articles', { params });
         return response.data;
@@ -496,9 +515,9 @@ export const api = {
         return response.data;
     },
 
-    // Manual scraping
+    // Manual scraping (longer timeout for scraping operations)
     manualScrape: async (data: ManualScrapeRequest): Promise<any> => {
-        const response = await apiClient.post('/scrape/manual', null, { params: data });
+        const response = await apiClient.post('/scrape/manual', null, { params: data, timeout: 300000 });
         return response.data;
     },
 
@@ -561,4 +580,64 @@ export const api = {
         const response = await apiClient.post(`/clusters/${clusterId}/debias-unified`);
         return response.data;
     },
+
+    // Reprocess all biased articles with 0 changes (admin)
+    reprocessAllBiased: async (limit: number = 50): Promise<any> => {
+        const response = await apiClient.post(`/articles/reprocess-all-biased?limit=${limit}`);
+        return response.data;
+    },
+
+    // Reprocess a single article (re-run bias analysis)
+    reprocessArticle: async (id: number): Promise<any> => {
+        const response = await apiClient.post(`/articles/${id}/reprocess`);
+        return response.data;
+    },
+
+    // Get visualization/analytics data
+    getVisualizationData: async (days: number = 30): Promise<VisualizationData> => {
+        const response = await apiClient.get<VisualizationData>('/analytics/visualization', { params: { days } });
+        return response.data;
+    },
 };
+
+// ============================================
+// Visualization Types
+// ============================================
+
+export interface BiasDistributionBucket {
+    range: string;
+    count: number;
+}
+
+export interface SourceComparison {
+    source: string;
+    total: number;
+    avg_bias: number;
+    biased_count: number;
+    processed_count: number;
+    bias_rate: number;
+}
+
+export interface TimeSeriesPoint {
+    date: string;
+    total: number;
+    biased: number;
+    processed: number;
+    bias_rate: number;
+}
+
+export interface CategoryBreakdown {
+    category: string;
+    total: number;
+    biased: number;
+    processed: number;
+    avg_bias: number;
+    bias_rate: number;
+}
+
+export interface VisualizationData {
+    bias_distribution: BiasDistributionBucket[];
+    source_comparison: SourceComparison[];
+    time_series: TimeSeriesPoint[];
+    category_breakdown: CategoryBreakdown[];
+}

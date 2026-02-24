@@ -1,8 +1,11 @@
 import { useState, useEffect, useRef } from 'react';
 import { api, type Newspaper } from '../services/api';
 import DateRangePicker from '../components/DateRangePicker';
+import usePageTitle from '../hooks/usePageTitle';
+import useBeforeUnload from '../hooks/useBeforeUnload';
 
 const ManualScrapingPage = () => {
+  usePageTitle('Manual Scraping');
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
   const [selectedSources, setSelectedSources] = useState<string[]>([
@@ -19,6 +22,9 @@ const ManualScrapingPage = () => {
   const [jobId, setJobId] = useState<string | null>(null);
   const [jobStatus, setJobStatus] = useState<string>('');
   const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // Warn before tab close during active scraping
+  useBeforeUnload(loading, 'Scraping is in progress. Are you sure you want to leave?');
 
   const today = new Date().toISOString().split('T')[0]; // max date cap
 
@@ -42,6 +48,10 @@ const ManualScrapingPage = () => {
 
   // Cleanup polling on unmount
   useEffect(() => {
+    // Request notification permission
+    if ('Notification' in window && Notification.permission === 'default') {
+      Notification.requestPermission();
+    }
     return () => {
       if (pollingRef.current) {
         clearInterval(pollingRef.current);
@@ -65,6 +75,13 @@ const ManualScrapingPage = () => {
           by_source: stats.by_source ?? {},
           errors: stats.errors ?? [],
         });
+        // Browser notification
+        if ('Notification' in window && Notification.permission === 'granted') {
+          new Notification('BiasFree News', {
+            body: `Scraping complete! ${stats.total_scraped ?? 0} articles scraped.`,
+            icon: '/icons/ArticleIcon.svg',
+          });
+        }
         if (pollingRef.current) {
           clearInterval(pollingRef.current);
           pollingRef.current = null;

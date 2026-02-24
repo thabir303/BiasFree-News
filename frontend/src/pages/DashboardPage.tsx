@@ -1,14 +1,21 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
+import toast from 'react-hot-toast';
 import { authApi, api, type UserAnalysis, type SchedulerStatus } from '../services/api';
 import { useAuth } from '../contexts/AuthContext';
-import { ChevronRight, Trash2, FileText, Clock, Play, Pause, Settings, RefreshCw } from 'lucide-react';
+import { ChevronRight, Trash2, FileText, Clock, Play, Pause, Settings, RefreshCw, ChevronLeft, Zap } from 'lucide-react';
+import ConfirmDialog from '../components/ConfirmDialog';
+import usePageTitle from '../hooks/usePageTitle';
 
 const DashboardPage = () => {
+  usePageTitle('Dashboard');
   const { isAdmin } = useAuth();
   const [loading, setLoading] = useState(true);
   const [analyses, setAnalyses] = useState<UserAnalysis[]>([]);
   const [total, setTotal] = useState(0);
+
+  // Delete confirmation
+  const [deleteTarget, setDeleteTarget] = useState<number | null>(null);
 
   // Scheduler state (admin only)
   const [schedulerStatus, setSchedulerStatus] = useState<SchedulerStatus | null>(null);
@@ -18,18 +25,24 @@ const DashboardPage = () => {
   const [schedulerMessage, setSchedulerMessage] = useState('');
   const [schedulerError, setSchedulerError] = useState('');
   const [toggleLoading, setToggleLoading] = useState(false);
+  const [reprocessLoading, setReprocessLoading] = useState(false);
+  const [reprocessMessage, setReprocessMessage] = useState('');
+
+  // Pagination state
+  const [currentPage, setCurrentPage] = useState(1);
+  const pageSize = 15;
 
   useEffect(() => {
     fetchAnalyses();
     if (isAdmin) {
       fetchSchedulerStatus();
     }
-  }, [isAdmin]);
+  }, [isAdmin, currentPage]);
 
   const fetchAnalyses = async () => {
     setLoading(true);
     try {
-      const result = await authApi.getMyAnalyses({ limit: 30 });
+      const result = await authApi.getMyAnalyses({ limit: pageSize, skip: (currentPage - 1) * pageSize });
       setAnalyses(result.analyses || []);
       setTotal(result.total || 0);
     } catch (error) {
@@ -89,10 +102,29 @@ const DashboardPage = () => {
       await authApi.deleteAnalysis(id);
       setAnalyses(prev => prev.filter(a => a.id !== id));
       setTotal(prev => prev - 1);
+      setDeleteTarget(null);
+      toast.success('Analysis deleted');
     } catch (error) {
       console.error('Failed to delete analysis:', error);
+      toast.error('Failed to delete analysis');
+      setDeleteTarget(null);
     }
   };
+
+  const handleReprocessAll = async () => {
+    setReprocessLoading(true);
+    setReprocessMessage('');
+    try {
+      const result = await api.reprocessAllBiased(50);
+      setReprocessMessage(result.message || 'Reprocessing complete!');
+    } catch (error: any) {
+      setReprocessMessage(error.response?.data?.detail || 'Failed to reprocess articles');
+    } finally {
+      setReprocessLoading(false);
+    }
+  };
+
+  const totalPages = Math.ceil(total / pageSize);
   
   if (loading) {
     return (
@@ -249,6 +281,24 @@ const DashboardPage = () => {
                 {schedulerError}
               </div>
             )}
+
+            {/* Reprocess All Biased */}
+            <div className="mt-6 pt-4 border-t border-gray-800/50">
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={handleReprocessAll}
+                  disabled={reprocessLoading}
+                  className="inline-flex items-center gap-2 px-5 py-2 bg-gradient-to-r from-violet-500 to-fuchsia-500 text-white rounded-lg font-semibold text-sm hover:from-violet-600 hover:to-fuchsia-600 transition-all disabled:opacity-50"
+                >
+                  {reprocessLoading ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Zap className="w-4 h-4" />}
+                  {reprocessLoading ? 'Reprocessing...' : 'Reprocess All Biased Articles'}
+                </button>
+                <span className="text-xs text-gray-500">Re-analyze biased articles with 0 changes</span>
+              </div>
+              {reprocessMessage && (
+                <p className="mt-2 text-sm text-gray-300 bg-gray-800/50 rounded-lg px-4 py-2">{reprocessMessage}</p>
+              )}
+            </div>
           </div>
         )}
 
@@ -341,7 +391,7 @@ const DashboardPage = () => {
 
                     {/* Delete button */}
                     <button
-                      onClick={(e) => { e.preventDefault(); e.stopPropagation(); handleDelete(analysis.id); }}
+                      onClick={(e) => { e.preventDefault(); e.stopPropagation(); setDeleteTarget(analysis.id); }}
                       className="shrink-0 p-1.5 rounded-lg text-gray-600 hover:text-red-400 hover:bg-red-500/10 transition-all opacity-0 group-hover:opacity-100"
                       title="Delete analysis"
                     >
@@ -352,8 +402,42 @@ const DashboardPage = () => {
               })}
             </div>
           )}
+
+          {/* Pagination */}
+          {totalPages > 1 && (
+            <div className="flex justify-center items-center gap-3 mt-6 pt-4 border-t border-gray-800/40">
+              <button
+                onClick={() => setCurrentPage(Math.max(1, currentPage - 1))}
+                disabled={currentPage === 1}
+                className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-sm font-medium text-gray-400 border border-gray-800 hover:border-gray-700 hover:text-white disabled:opacity-30 disabled:cursor-not-allowed transition-all"
+              >
+                <ChevronLeft className="w-4 h-4" /> Previous
+              </button>
+              <span className="text-sm text-gray-500">
+                Page {currentPage} of {totalPages}
+              </span>
+              <button
+                onClick={() => setCurrentPage(Math.min(totalPages, currentPage + 1))}
+                disabled={currentPage >= totalPages}
+                className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-sm font-medium text-gray-400 border border-gray-800 hover:border-gray-700 hover:text-white disabled:opacity-30 disabled:cursor-not-allowed transition-all"
+              >
+                Next <ChevronRight className="w-4 h-4" />
+              </button>
+            </div>
+          )}
         </div>
       </div>
+
+      {/* Delete Confirmation Dialog */}
+      <ConfirmDialog
+        open={deleteTarget !== null}
+        title="Delete Analysis"
+        message="Are you sure you want to delete this analysis? This action cannot be undone."
+        confirmLabel="Delete"
+        variant="danger"
+        onConfirm={() => deleteTarget !== null && handleDelete(deleteTarget)}
+        onCancel={() => setDeleteTarget(null)}
+      />
     </div>
   );
 };

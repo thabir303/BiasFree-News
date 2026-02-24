@@ -5,6 +5,8 @@ export interface FilterState {
   is_biased: string;
   date_from: string;
   date_to: string;
+  search: string;
+  sort_by: string;
   skip: number;
   limit: number;
 }
@@ -15,6 +17,8 @@ export const useArticleFilters = (initialLimit: number = 12) => {
     is_biased: '',
     date_from: '',
     date_to: '',
+    search: '',
+    sort_by: '',
     skip: 0,
     limit: initialLimit,
   });
@@ -28,7 +32,7 @@ export const useArticleFilters = (initialLimit: number = 12) => {
   }, []);
 
   const handleClearAll = useCallback(() => {
-    setFilters((prev) => ({ source: '', is_biased: '', date_from: '', date_to: '', skip: 0, limit: prev.limit }));
+    setFilters((prev) => ({ source: '', is_biased: '', date_from: '', date_to: '', search: '', sort_by: '', skip: 0, limit: prev.limit }));
   }, []);
 
   const handlePageChange = useCallback((direction: 'next' | 'prev') => {
@@ -43,8 +47,8 @@ export const useArticleFilters = (initialLimit: number = 12) => {
   }, []);
 
   const getActiveFiltersCount = useCallback(() => {
-    return [filters.source, filters.is_biased, filters.date_from, filters.date_to].filter(Boolean).length;
-  }, [filters.source, filters.is_biased, filters.date_from, filters.date_to]);
+    return [filters.source, filters.is_biased, filters.date_from, filters.date_to, filters.search].filter(Boolean).length;
+  }, [filters.source, filters.is_biased, filters.date_from, filters.date_to, filters.search]);
 
   const getCurrentPage = useCallback(() => {
     return Math.floor(filters.skip / filters.limit) + 1;

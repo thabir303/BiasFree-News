@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { authApi } from '../services/api';
 import { Mail, Lock, User, Eye, EyeOff, Check, X } from 'lucide-react';
+import usePageTitle from '../hooks/usePageTitle';
 
 interface PasswordStrength {
     minLength: boolean;
@@ -13,6 +14,7 @@ interface PasswordStrength {
 }
 
 const SignupPage: React.FC = () => {
+  usePageTitle('Sign Up');
     const [username, setUsername] = useState('');
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');

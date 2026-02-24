@@ -3,8 +3,10 @@ import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { authApi } from '../services/api';
 import { Mail, Lock, Eye, EyeOff } from 'lucide-react';
+import usePageTitle from '../hooks/usePageTitle';
 
 const LoginPage: React.FC = () => {
+  usePageTitle('Login');
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [showPassword, setShowPassword] = useState(false);

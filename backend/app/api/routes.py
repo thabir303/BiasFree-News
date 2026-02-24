@@ -1,6 +1,8 @@
 """
-API routes for BiasFree News.
-All endpoints with request/response validation and error handling.
+⚠️ DEPRECATED — This file is NOT mounted in main.py.
+All active API routes are served via routes_enhanced.py.
+Kept for reference only. Do not add new endpoints here.
+
 """
 import logging
 from fastapi import APIRouter, HTTPException, Request
