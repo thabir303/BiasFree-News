@@ -63,7 +63,8 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
             setTokenState(response.access_token);
             setUser(response.user);
         } catch (error: any) {
-            console.error('Signin failed:', error);
+            // Don't log full error object — it contains request config with credentials
+            console.error('Signin failed:', error.response?.data?.detail || error.message);
             throw new Error(error.response?.data?.detail || 'Signin failed');
         }
     };
@@ -75,7 +76,8 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
             // Return verification message
             return response.message || 'Account created successfully! Please verify your email.';
         } catch (error: any) {
-            console.error('Signup failed:', error);
+            // Don't log full error object — it contains request config with credentials
+            console.error('Signup failed:', error.response?.data?.detail || error.message);
             throw new Error(error.response?.data?.detail || 'Signup failed');
         }
     };
