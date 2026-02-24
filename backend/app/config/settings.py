@@ -24,7 +24,7 @@ class Settings(BaseSettings):
     
     # CORS Configuration
     cors_origins: List[str] = Field(
-        default=["http://localhost:5173", "http://localhost:3000"],
+        default=["http://localhost:5173", "http://localhost:3000", "http://localhost:5174"],
         env="CORS_ORIGINS"
     )
     
@@ -52,10 +52,13 @@ class Settings(BaseSettings):
     admin_email: str = Field(default="adminuser@admin.com", env="ADMIN_EMAIL")
     admin_password: str = Field(default="platformadmin@123", env="ADMIN_PASSWORD")
     
+    # Database Configuration (PostgreSQL for production)
+    database_url: str = Field(default="", env="DATABASE_URL")
+    
     # SMTP Email Configuration
-    mail_username: str = Field(..., env="MAIL_USERNAME")
-    mail_password: str = Field(..., env="MAIL_PASSWORD")
-    mail_from: str = Field(..., env="MAIL_FROM")
+    mail_username: str = Field(default="", env="MAIL_USERNAME")
+    mail_password: str = Field(default="", env="MAIL_PASSWORD")
+    mail_from: str = Field(default="", env="MAIL_FROM")
     mail_server: str = Field(default="smtp.gmail.com", env="MAIL_SERVER")
     mail_from_name: str = Field(default="BiasFree News", env="MAIL_FROM_NAME")
     mail_port: int = Field(default=587, env="MAIL_PORT")
@@ -67,11 +70,23 @@ class Settings(BaseSettings):
     verification_token_expiration_minutes: int = Field(default=1, env="VERIFICATION_TOKEN_EXPIRATION_MINUTES")
     
     # Redis Configuration for Celery
+    redis_url: str = Field(default="", env="REDIS_URL")
     redis_host: str = Field(default="localhost", env="REDIS_HOST")
     redis_port: int = Field(default=6379, env="REDIS_PORT")
     redis_db: int = Field(default=0, env="REDIS_DB")
     redis_username: str = Field(default="default", env="REDIS_USERNAME")
     redis_password: str = Field(default="", env="REDIS_PASSWORD")
+    
+    @property
+    def effective_redis_url(self) -> str:
+        """Build Redis URL with explicit var taking priority."""
+        if self.redis_url:
+            return self.redis_url
+        if self.redis_password:
+            if self.redis_username:
+                return f"redis://{self.redis_username}:{self.redis_password}@{self.redis_host}:{self.redis_port}/{self.redis_db}"
+            return f"redis://:{self.redis_password}@{self.redis_host}:{self.redis_port}/{self.redis_db}"
+        return f"redis://{self.redis_host}:{self.redis_port}/{self.redis_db}"
     
     # Scheduler Configuration
     scheduler_hour: int = Field(default=6, env="SCHEDULER_HOUR")

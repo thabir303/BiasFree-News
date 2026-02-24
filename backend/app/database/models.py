@@ -2,7 +2,7 @@
 SQLAlchemy database models for storing articles and analysis results.
 """
 from datetime import datetime
-from sqlalchemy import Column, Integer, String, Text, DateTime, Boolean, Float, JSON, Enum, ForeignKey, LargeBinary
+from sqlalchemy import Column, Integer, String, Text, DateTime, Boolean, Float, JSON, Enum as SAEnum, ForeignKey, LargeBinary
 from sqlalchemy.orm import relationship
 from sqlalchemy.ext.declarative import declarative_base
 import enum
@@ -25,7 +25,7 @@ class User(Base):
     username = Column(String(50), nullable=False, index=True)  # Username is NOT unique
     email = Column(String(100), unique=True, nullable=False, index=True)  # Only email is unique
     hashed_password = Column(String(255), nullable=False)
-    role = Column(Enum(UserRole), default=UserRole.USER, nullable=False, index=True)
+    role = Column(SAEnum(UserRole, name="userrole", create_constraint=True), default=UserRole.USER, nullable=False, index=True)
     is_active = Column(Boolean, default=True, nullable=False)
     is_verified = Column(Boolean, default=False, nullable=False)
     verification_token = Column(String(255), nullable=True)

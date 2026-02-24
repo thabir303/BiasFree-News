@@ -16,20 +16,23 @@ class RedisSchedulerService:
     
     def __init__(self):
         """Initialize Redis connection."""
-        redis_kwargs = {
-            "host": settings.redis_host,
-            "port": settings.redis_port,
-            "db": settings.redis_db,
-            "decode_responses": True
-        }
-        
-        # Add authentication if provided
-        if settings.redis_username:
-            redis_kwargs["username"] = settings.redis_username
-        if settings.redis_password:
-            redis_kwargs["password"] = settings.redis_password
-            
-        self.redis_client = redis.Redis(**redis_kwargs)
+        # Use REDIS_URL if available, otherwise build from individual settings
+        redis_url = settings.effective_redis_url
+        try:
+            self.redis_client = redis.Redis.from_url(redis_url, decode_responses=True)
+        except Exception:
+            # Fallback to individual params
+            redis_kwargs = {
+                "host": settings.redis_host,
+                "port": settings.redis_port,
+                "db": settings.redis_db,
+                "decode_responses": True
+            }
+            if settings.redis_username:
+                redis_kwargs["username"] = settings.redis_username
+            if settings.redis_password:
+                redis_kwargs["password"] = settings.redis_password
+            self.redis_client = redis.Redis(**redis_kwargs)
         self.scheduler_running_key = "scheduler:running"
         self.last_run_key = "scheduler:last_run"
         self.next_run_key = "scheduler:next_run"

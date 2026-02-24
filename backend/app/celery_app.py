@@ -9,13 +9,8 @@ import redis
 
 logger = logging.getLogger(__name__)
 
-# Initialize Celery app with Redis authentication
-redis_url = f"redis://:{settings.redis_password}@{settings.redis_host}:{settings.redis_port}/{settings.redis_db}"
-if settings.redis_username and settings.redis_password:
-    redis_url = f"redis://{settings.redis_username}:{settings.redis_password}@{settings.redis_host}:{settings.redis_port}/{settings.redis_db}"
-elif not settings.redis_password:
-    # Local Redis without password
-    redis_url = f"redis://{settings.redis_host}:{settings.redis_port}/{settings.redis_db}"
+# Use the centralized Redis URL from settings
+redis_url = settings.effective_redis_url
 
 celery_app = Celery(
     "biasfree_news",

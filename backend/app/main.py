@@ -60,10 +60,14 @@ async def lifespan(app: FastAPI):
         db.close()
     
     # Start scheduler for automated scraping
-    logger.debug("Starting automated scraping scheduler...")
-    scheduler = get_scheduler()
-    scheduler.start()
-    logger.debug("Scheduler started - Daily scraping at 6:00 AM BDT")
+    # In production on Render free tier, scheduler runs via Celery Beat (separate worker)
+    if not settings.is_production:
+        logger.debug("Starting automated scraping scheduler...")
+        scheduler = get_scheduler()
+        scheduler.start()
+        logger.debug("Scheduler started - Daily scraping at 6:00 AM BDT")
+    else:
+        logger.info("Production mode: scheduler managed by Celery Beat worker")
     
     # Sync Redis scheduler state
     try:
@@ -79,7 +83,8 @@ async def lifespan(app: FastAPI):
     
     # Shutdown
     logger.info("Shutting down BiasFree News API")
-    scheduler.stop()
+    if not settings.is_production:
+        scheduler.stop()
     try:
         from app.services.redis_scheduler import redis_scheduler_service
         redis_scheduler_service.stop()
@@ -94,7 +99,7 @@ app = FastAPI(
     description="API for detecting and removing bias from Bengali news articles",
     version="1.0.0",
     lifespan=lifespan,
-    docs_url="/docs" if settings.debug else None,
+    docs_url="/docs",
     redoc_url="/redoc" if settings.debug else None,
 )
 
