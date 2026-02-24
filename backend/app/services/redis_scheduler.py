@@ -16,29 +16,26 @@ class RedisSchedulerService:
     
     def __init__(self):
         """Initialize Redis connection."""
-        # Use REDIS_URL if available, otherwise build from individual settings
         redis_url = settings.effective_redis_url
         try:
-            self.redis_client = redis.Redis.from_url(redis_url, decode_responses=True)
+            ssl_kwargs = {"ssl_cert_reqs": None} if redis_url.startswith("rediss://") else {}
+            self.redis_client = redis.Redis.from_url(
+                redis_url, decode_responses=True, **ssl_kwargs
+            )
+            # Test connection
+            self.redis_client.ping()
         except Exception:
-            # Fallback to individual params
-            redis_kwargs = {
-                "host": settings.redis_host,
-                "port": settings.redis_port,
-                "db": settings.redis_db,
-                "decode_responses": True
-            }
-            if settings.redis_username:
-                redis_kwargs["username"] = settings.redis_username
-            if settings.redis_password:
-                redis_kwargs["password"] = settings.redis_password
-            self.redis_client = redis.Redis(**redis_kwargs)
+            # Redis unavailable — use a no-op stub so the app still starts
+            self.redis_client = None
         self.scheduler_running_key = "scheduler:running"
         self.last_run_key = "scheduler:last_run"
         self.next_run_key = "scheduler:next_run"
         
     def start(self):
         """Mark scheduler as running."""
+        if self.redis_client is None:
+            logger.warning("Redis unavailable — scheduler state not persisted")
+            return
         try:
             self.redis_client.set(self.scheduler_running_key, "true")
             logger.info("Redis-based scheduler started")
@@ -47,6 +44,8 @@ class RedisSchedulerService:
             
     def stop(self):
         """Mark scheduler as stopped."""
+        if self.redis_client is None:
+            return
         try:
             self.redis_client.set(self.scheduler_running_key, "false")
             logger.info("Redis-based scheduler stopped")
@@ -55,6 +54,8 @@ class RedisSchedulerService:
             
     def is_running(self) -> bool:
         """Check if scheduler is running."""
+        if self.redis_client is None:
+            return False
         try:
             status = self.redis_client.get(self.scheduler_running_key)
             return status == "true"
