@@ -2,3 +2,4 @@ backend copy
 *.md
 !README.md
 *.log
+backend/.github/workflows/scrape.yml
