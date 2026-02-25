@@ -720,8 +720,36 @@ async def get_bookmarks(
         .all()
     )
     total = db.query(Bookmark).filter(Bookmark.user_id == current_user.id).count()
+    # Fetch article details for each bookmark
+    article_ids = [b.article_id for b in bookmarks]
+    articles_map = {}
+    if article_ids:
+        articles = db.query(Article).filter(Article.id.in_(article_ids)).all()
+        articles_map = {a.id: a for a in articles}
+
+    bookmark_list = []
+    for b in bookmarks:
+        a = articles_map.get(b.article_id)
+        bookmark_list.append({
+            "id": b.id,
+            "article_id": b.article_id,
+            "created_at": b.created_at.isoformat(),
+            "article": {
+                "id": a.id,
+                "title": a.title,
+                "source": a.source,
+                "category": a.category,
+                "url": a.url,
+                "original_content": (a.original_content[:200] + '...') if a.original_content and len(a.original_content) > 200 else (a.original_content or ''),
+                "is_biased": a.is_biased,
+                "bias_score": a.bias_score,
+                "processed": a.processed,
+                "scraped_at": a.scraped_at.isoformat() if a.scraped_at else None,
+            } if a else None,
+        })
+
     return {
-        "bookmarks": [{"id": b.id, "article_id": b.article_id, "created_at": b.created_at.isoformat()} for b in bookmarks],
+        "bookmarks": bookmark_list,
         "total": total,
     }
 

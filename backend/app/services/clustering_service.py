@@ -496,7 +496,7 @@ class ClusteringService:
             source_articles.append({
                 "source": a.source or "unknown",
                 "title": a.title or "",
-                "content": content[:3000],  # Cap per article to stay within token limits
+                "content": content[:1500],  # Cap per article to stay within token limits
             })
 
         if not source_articles:
@@ -559,39 +559,17 @@ class ClusteringService:
 
         category_hint = f"বিভাগ: {category}" if category else ""
 
-        system_prompt = """তুমি একজন নিরপেক্ষ বাংলা সংবাদ সম্পাদক। তোমাকে একই ঘটনা নিয়ে একাধিক পত্রিকার সংবাদ দেওয়া হবে।
+        system_prompt = """তুমি নিরপেক্ষ বাংলা সংবাদ সম্পাদক। একাধিক পত্রিকার সংবাদ থেকে একটি নিরপেক্ষ (debiased) নিবন্ধ ও শিরোনাম তৈরি করো।
 
-তোমার কাজ:
-1. সবগুলো উৎস থেকে তথ্য একত্রিত করে একটি একক, সম্পূর্ণ, নিরপেক্ষ (debiased) সংবাদ নিবন্ধ রচনা করো।
-2. নিবন্ধটি অবশ্যই নিরপেক্ষ ও ভারসাম্যপূর্ণ হতে হবে — কোনো পক্ষপাত, সংবেদনশীলতা, আবেগী ভাষা বা একপক্ষীয় বর্ণনা রাখা যাবে না।
-3. একটি নিরপেক্ষ, তথ্যভিত্তিক বাংলা শিরোনাম তৈরি করো।
+নিয়ম: পক্ষপাতমূলক/আবেগী ভাষা বাদ দাও, সব পক্ষের বক্তব্য সমানভাবে দাও, অভিযোগকে অভিযোগ হিসেবে দাও। নিবন্ধটি সংক্ষিপ্ত কিন্তু তথ্যবহুল রাখো (5-6 অনুচ্ছেদ)।
 
-Debiasing নিয়ম:
-- রাজনৈতিকভাবে পক্ষপাতমূলক শব্দ বাদ দাও (যেমন: "ভয়াবহ", "নৃশংস", "জঘন্য" → "গুরুতর", "উদ্বেগজনক")
-- সংবেদনশীল বা আবেগী ভাষা নিরপেক্ষ ভাষায় পরিবর্তন করো
-- সব পক্ষের বক্তব্য সমানভাবে উপস্থাপন করো
-- অভিযোগকে অভিযোগ হিসেবেই উপস্থাপন করো, সত্য হিসেবে নয়
-- "দাবি করেছেন", "জানিয়েছেন", "অভিযোগ করেছেন" — এই ধরনের attribution ব্যবহার করো
-- কোনো নির্দিষ্ট পত্রিকার দৃষ্টিভঙ্গি প্রাধান্য দেওয়া যাবে না
-
-লেখার ধরন:
-- পেশাদার সংবাদ ভাষায় লেখো
-- তথ্যবহুল ও সুগঠিত অনুচ্ছেদে সাজাও
-- গুরুত্বপূর্ণ তথ্য আগে দাও (inverted pyramid)
-- উৎস পত্রিকার নাম উল্লেখ করার দরকার নেই, শুধু তথ্য একত্রিত করো
-
-শুধু valid JSON ফরম্যাটে উত্তর দাও:
-{
-  "headline": "নিরপেক্ষ বাংলা শিরোনাম",
-  "unified_article": "সম্পূর্ণ নিরপেক্ষ ও ভারসাম্যপূর্ণ বাংলা নিবন্ধ"
-}"""
+শুধু valid JSON দাও:
+{"headline": "শিরোনাম", "unified_article": "নিবন্ধ"}"""
 
         user_prompt = f"""{category_hint}
-
-নিচের একাধিক পত্রিকার সংবাদ থেকে একটি একক নিরপেক্ষ (debiased) সংবাদ নিবন্ধ তৈরি করো:
+নিচের সংবাদগুলো থেকে একটি নিরপেক্ষ নিবন্ধ তৈরি করো (5-6 অনুচ্ছেদ, সংক্ষিপ্ত):
 {articles_text}
-
-JSON ফরম্যাটে উত্তর দাও।"""
+JSON দাও।"""
 
         logger.info(
             f"Calling OpenAI for unified+debiased article "
@@ -614,7 +592,7 @@ JSON ফরম্যাটে উত্তর দাও।"""
         }
 
         # Token limit — Bengali unified article needs generous room
-        max_tokens = min(6000, app_settings.openai_max_tokens)
+        max_tokens = min(8000, max(app_settings.openai_max_tokens, 8000))
         if any(p in app_settings.openai_model.lower() for p in ["gpt-4o", "gpt-5", "o1"]):
             kwargs["max_completion_tokens"] = max_tokens
         else:
@@ -638,12 +616,10 @@ JSON ফরম্যাটে উত্তর দাও।"""
             )
 
         if finish_reason == "length":
-            logger.warning("Unified article response was truncated!")
+            logger.warning("Unified article response was truncated! Attempting repair...")
 
-        # Parse the JSON response
-        openai_service = OpenAIService()
-        json_str = openai_service._extract_json(raw_response)
-        result = json.loads(json_str)
+        # Parse the JSON response — with robust truncation repair
+        result = self._parse_unified_response(raw_response, finish_reason)
 
         logger.info(
             f" Unified article generated: "
@@ -652,6 +628,67 @@ JSON ফরম্যাটে উত্তর দাও।"""
         )
 
         return result
+
+    def _parse_unified_response(self, raw_response: str, finish_reason: str) -> Dict:
+        """
+        Parse OpenAI JSON response for unified article with robust
+        truncation handling. If the JSON is truncated (finish_reason=length),
+        extract whatever headline and article content we can.
+        """
+        if not raw_response or not raw_response.strip():
+            logger.warning("Empty raw response from OpenAI")
+            return {"headline": "", "unified_article": ""}
+
+        raw = raw_response.strip()
+
+        # Try standard JSON parse first
+        try:
+            # Remove markdown code fences if present
+            clean = re.sub(r'^```(?:json)?\s*', '', raw)
+            clean = re.sub(r'\s*```$', '', clean)
+            result = json.loads(clean)
+            if result.get("unified_article"):
+                return result
+        except json.JSONDecodeError:
+            pass
+
+        # If truncated or parse failed, extract fields manually via regex
+        logger.info("Standard JSON parse failed, attempting manual extraction...")
+
+        headline = ""
+        unified_article = ""
+
+        # Extract headline
+        hl_match = re.search(r'"headline"\s*:\s*"((?:[^"\\]|\\.)*)"', raw, re.DOTALL)
+        if hl_match:
+            headline = hl_match.group(1).replace('\\n', '\n').replace('\\"', '"')
+
+        # Extract unified_article — may be truncated
+        ua_match = re.search(r'"unified_article"\s*:\s*"((?:[^"\\]|\\.)*)', raw, re.DOTALL)
+        if ua_match:
+            unified_article = ua_match.group(1).replace('\\n', '\n').replace('\\"', '"')
+            # Clean trailing incomplete sentence if truncated
+            if finish_reason == "length" and unified_article:
+                # Find last complete sentence (ends with ।, !, ?, .)
+                last_sentence_end = -1
+                for end_char in ['।', '!', '?', '.']:
+                    idx = unified_article.rfind(end_char)
+                    if idx > last_sentence_end:
+                        last_sentence_end = idx
+                if last_sentence_end > len(unified_article) * 0.3:
+                    unified_article = unified_article[:last_sentence_end + 1]
+                logger.info(f"Extracted truncated article: {len(unified_article)} chars")
+
+        if unified_article:
+            return {"headline": headline, "unified_article": unified_article}
+
+        # Last resort: use OpenAIService._extract_json
+        openai_service = OpenAIService()
+        json_str = openai_service._extract_json(raw)
+        try:
+            return json.loads(json_str)
+        except json.JSONDecodeError:
+            return {"headline": "", "unified_article": ""}
 
     def _pick_best_headline(self, cluster_articles: List[Article]) -> str:
         """

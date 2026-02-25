@@ -2,3 +2,5 @@ backend copy
 *.md
 !README.md
 *.log
+*.db-shm
+*.db-wal

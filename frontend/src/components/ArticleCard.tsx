@@ -6,6 +6,9 @@ interface ArticleCardProps {
   article: Article;
   onBiasCheck?: (articleId: number, e: React.MouseEvent) => void;
   processingIds?: Set<number>;
+  isSaved?: boolean;
+  onToggleSave?: (articleId: number, e: React.MouseEvent) => void;
+  savingIds?: Set<number>;
 }
 
 const getBiasIndicator = (score: number) => {
@@ -25,7 +28,7 @@ const formatDate = (dateStr: string | null) => {
   }
 };
 
-const ArticleCard = ({ article, onBiasCheck, processingIds = new Set() }: ArticleCardProps) => {
+const ArticleCard = ({ article, onBiasCheck, processingIds = new Set(), isSaved = false, onToggleSave, savingIds = new Set() }: ArticleCardProps) => {
   const bias = getBiasIndicator(article.bias_score);
   const sourceColor = SOURCE_COLORS[article.source] || 'bg-gray-500';
   const sourceLogo = SOURCE_LOGOS[article.source];
@@ -37,7 +40,7 @@ const ArticleCard = ({ article, onBiasCheck, processingIds = new Set() }: Articl
       to={`/article/${article.id}`}
       className="group relative flex flex-col rounded-2xl border border-gray-800/60 bg-gray-900/40 backdrop-blur-sm p-5 transition-all duration-300 hover:border-gray-700 hover:bg-gray-900/60 hover:shadow-xl hover:shadow-black/20 hover:-translate-y-0.5"
     >
-      {/* Top row — source + bias */}
+      {/* Top row — source + bias + save */}
       <div className="flex items-center justify-between mb-3.5">
         <div className="flex items-center gap-2">
           {sourceLogo ? (
@@ -55,6 +58,33 @@ const ArticleCard = ({ article, onBiasCheck, processingIds = new Set() }: Articl
             {article.bias_score.toFixed(0)}%
           </span>
         )}
+        <div className="flex items-center gap-1.5">
+          {isSaved && (
+            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-medium bg-amber-500/10 text-amber-400 border border-amber-500/20">
+              🔖 Saved
+            </span>
+          )}
+          {onToggleSave && (
+            <button
+              onClick={(e) => { e.preventDefault(); e.stopPropagation(); onToggleSave(article.id, e); }}
+              disabled={savingIds.has(article.id)}
+              className={`p-1.5 rounded-lg transition-all disabled:opacity-40 ${
+                isSaved
+                  ? 'text-amber-400 hover:text-amber-300 hover:bg-amber-500/10'
+                  : 'text-gray-600 hover:text-amber-400 hover:bg-amber-500/10 opacity-0 group-hover:opacity-100'
+              }`}
+              title={isSaved ? 'Remove bookmark' : 'Save article'}
+            >
+              {savingIds.has(article.id) ? (
+                <svg className="animate-spin w-4 h-4" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" /></svg>
+              ) : (
+                <svg className="w-4 h-4" fill={isSaved ? 'currentColor' : 'none'} viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z" />
+                </svg>
+              )}
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Cluster/Merged badge */}

@@ -1,9 +1,10 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import toast from 'react-hot-toast';
-import { authApi, api, type UserAnalysis, type SchedulerStatus } from '../services/api';
+import { authApi, api, type UserAnalysis, type SchedulerStatus, type BookmarkWithArticle } from '../services/api';
 import { useAuth } from '../contexts/AuthContext';
-import { ChevronRight, Trash2, FileText, Clock, Play, Pause, Settings, RefreshCw, ChevronLeft, Zap } from 'lucide-react';
+import { ChevronRight, Trash2, FileText, Clock, Play, Pause, Settings, RefreshCw, ChevronLeft, Zap, Bookmark } from 'lucide-react';
+import { SOURCE_LABELS, SOURCE_COLORS } from '../constants/sources';
 import ConfirmDialog from '../components/ConfirmDialog';
 import usePageTitle from '../hooks/usePageTitle';
 
@@ -32,12 +33,47 @@ const DashboardPage = () => {
   const [currentPage, setCurrentPage] = useState(1);
   const pageSize = 15;
 
+  // Bookmarks state
+  const [bookmarks, setBookmarks] = useState<BookmarkWithArticle[]>([]);
+  const [bookmarksTotal, setBookmarksTotal] = useState(0);
+  const [bookmarksLoading, setBookmarksLoading] = useState(true);
+  const [removingBookmark, setRemovingBookmark] = useState<number | null>(null);
+
   useEffect(() => {
     fetchAnalyses();
+    fetchBookmarks();
     if (isAdmin) {
       fetchSchedulerStatus();
     }
   }, [isAdmin, currentPage]);
+
+  const fetchBookmarks = async () => {
+    setBookmarksLoading(true);
+    try {
+      const result = await authApi.getBookmarks();
+      setBookmarks(result.bookmarks);
+      setBookmarksTotal(result.total);
+    } catch (error) {
+      console.error('Failed to fetch bookmarks:', error);
+    } finally {
+      setBookmarksLoading(false);
+    }
+  };
+
+  const handleRemoveBookmark = async (articleId: number) => {
+    setRemovingBookmark(articleId);
+    try {
+      await authApi.removeBookmark(articleId);
+      setBookmarks(prev => prev.filter(b => b.article_id !== articleId));
+      setBookmarksTotal(prev => prev - 1);
+      toast.success('Bookmark removed');
+    } catch (error) {
+      console.error('Failed to remove bookmark:', error);
+      toast.error('Failed to remove bookmark');
+    } finally {
+      setRemovingBookmark(null);
+    }
+  };
 
   const fetchAnalyses = async () => {
     setLoading(true);
@@ -301,6 +337,113 @@ const DashboardPage = () => {
             </div>
           </div>
         )}
+
+        {/* Saved Articles (Bookmarks) */}
+        <div className="bg-gray-900/50 backdrop-blur-sm rounded-xl border border-gray-800 p-6 mb-6">
+          <div className="flex items-center justify-between mb-6">
+            <div className="flex items-center space-x-3">
+              <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-amber-500 to-yellow-500 flex items-center justify-center shadow-md">
+                <Bookmark className="w-5 h-5 text-white" />
+              </div>
+              <div>
+                <h2 className="text-xl font-bold text-white">Saved Articles</h2>
+                <p className="text-xs text-gray-500">{bookmarksTotal} article{bookmarksTotal !== 1 ? 's' : ''} bookmarked</p>
+              </div>
+            </div>
+            <Link
+              to="/articles"
+              className="inline-flex items-center gap-1 text-xs font-medium text-gray-400 hover:text-primary-400 transition-colors px-3 py-1.5 rounded-lg border border-gray-800/60 hover:border-gray-600"
+            >
+              Browse Articles <ChevronRight className="w-3.5 h-3.5" />
+            </Link>
+          </div>
+
+          {bookmarksLoading ? (
+            <div className="space-y-3">
+              {[1, 2, 3].map(i => (
+                <div key={i} className="flex items-center gap-4 p-4 rounded-xl border border-gray-800/50 bg-gray-800/20 animate-pulse">
+                  <div className="w-12 h-12 rounded-lg bg-gray-800" />
+                  <div className="flex-1"><div className="h-4 w-3/4 rounded bg-gray-800 mb-2" /><div className="h-3 w-1/2 rounded bg-gray-800/60" /></div>
+                </div>
+              ))}
+            </div>
+          ) : bookmarks.length === 0 ? (
+            <div className="text-center py-14">
+              <div className="text-5xl mb-4">🔖</div>
+              <p className="text-gray-300 font-medium mb-1">No saved articles</p>
+              <p className="text-gray-500 text-sm">Browse <Link to="/articles" className="text-primary-400 hover:underline">Articles</Link> and click the bookmark icon to save articles here.</p>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {bookmarks.map((bookmark) => {
+                const article = bookmark.article;
+                if (!article) return null;
+                const sourceLabel = SOURCE_LABELS[article.source] || article.source;
+                const sourceColor = SOURCE_COLORS[article.source] || 'bg-gray-500';
+
+                return (
+                  <Link
+                    key={bookmark.id}
+                    to={`/article/${article.id}`}
+                    className="flex items-center gap-4 p-4 rounded-xl border border-gray-800/50 bg-gray-800/20 hover:bg-gray-800/40 hover:border-gray-700 transition-all group"
+                  >
+                    {/* Bias/source indicator */}
+                    <div className="shrink-0 w-12 h-12 rounded-lg border border-gray-700/50 bg-gray-800/50 flex flex-col items-center justify-center gap-0.5">
+                      <span className={`w-2.5 h-2.5 rounded-full ${sourceColor}`} />
+                      {article.processed && article.is_biased !== null && (
+                        <span className={`text-[9px] font-bold ${article.is_biased ? 'text-red-400' : 'text-emerald-400'}`}>
+                          {article.bias_score !== null ? `${article.bias_score.toFixed(0)}%` : '✓'}
+                        </span>
+                      )}
+                    </div>
+
+                    {/* Content */}
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 mb-0.5">
+                        <h4 className="text-sm font-medium text-gray-200 truncate group-hover:text-white transition-colors">
+                          {article.title || 'Untitled'}
+                        </h4>
+                        <span className="shrink-0 inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-medium rounded-full bg-amber-500/10 text-amber-400 border border-amber-500/20">
+                          🔖 Saved
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-[11px] text-gray-500 font-medium">{sourceLabel}</span>
+                        {article.category && (
+                          <>
+                            <span className="text-gray-700">·</span>
+                            <span className="text-[11px] text-gray-500">{article.category}</span>
+                          </>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Saved date */}
+                    <div className="shrink-0 text-right">
+                      <p className="text-[11px] text-gray-500">
+                        {new Date(bookmark.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                      </p>
+                    </div>
+
+                    {/* Remove bookmark */}
+                    <button
+                      onClick={(e) => { e.preventDefault(); e.stopPropagation(); handleRemoveBookmark(article.id); }}
+                      disabled={removingBookmark === article.id}
+                      className="shrink-0 p-1.5 rounded-lg text-gray-600 hover:text-red-400 hover:bg-red-500/10 transition-all opacity-0 group-hover:opacity-100 disabled:opacity-40"
+                      title="Remove bookmark"
+                    >
+                      {removingBookmark === article.id ? (
+                        <RefreshCw className="w-4 h-4 animate-spin" />
+                      ) : (
+                        <Trash2 className="w-4 h-4" />
+                      )}
+                    </button>
+                  </Link>
+                );
+              })}
+            </div>
+          )}
+        </div>
 
         {/* Manual Analysis History */}
         <div className="bg-gray-900/50 backdrop-blur-sm rounded-xl border border-gray-800 p-6">

@@ -1,12 +1,14 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { api, type Article } from '../services/api';
+import { api, authApi, type Article } from '../services/api';
 import ArticleFilters from '../components/ArticleFilters';
 import ArticlePagination from '../components/ArticlePagination';
 import { useArticleFilters } from '../hooks/useArticleFilters';
 import { CATEGORY_META } from '../constants/sources';
 import usePageTitle from '../hooks/usePageTitle';
 import ArticleCard from '../components/ArticleCard';
+import { useAuth } from '../contexts/AuthContext';
+import toast from 'react-hot-toast';
 
 /* ─── Skeleton ──────────────────────────────────── */
 const CardSkeleton = () => (
@@ -26,6 +28,7 @@ const CategoryArticlesPage = () => {
   const { categoryName } = useParams<{ categoryName: string }>();
   usePageTitle(categoryName ? decodeURIComponent(categoryName) : 'Category');
   const navigate = useNavigate();
+  const { isAuthenticated } = useAuth();
   const decodedCategory = categoryName ? decodeURIComponent(categoryName) : '';
 
   const meta = CATEGORY_META[decodedCategory] || { icon: '📰', text: decodedCategory, gradient: 'from-gray-500 to-gray-600' };
@@ -34,6 +37,8 @@ const CategoryArticlesPage = () => {
   const [loading, setLoading] = useState(true);
   const [processingIds, setProcessingIds] = useState<Set<number>>(new Set());
   const [total, setTotal] = useState(0);
+  const [savedIds, setSavedIds] = useState<Set<number>>(new Set());
+  const [savingIds, setSavingIds] = useState<Set<number>>(new Set());
   
   const {
     filters,
@@ -75,6 +80,37 @@ const CategoryArticlesPage = () => {
   useEffect(() => {
     fetchArticles();
   }, [fetchArticles]);
+
+  useEffect(() => {
+    if (isAuthenticated) {
+      authApi.getBookmarks().then(result => {
+        setSavedIds(new Set(result.bookmarks.map(b => b.article_id)));
+      }).catch(() => {});
+    }
+  }, [isAuthenticated]);
+
+  const handleToggleSave = async (articleId: number, e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (savingIds.has(articleId)) return;
+    setSavingIds(prev => new Set(prev).add(articleId));
+    try {
+      if (savedIds.has(articleId)) {
+        await authApi.removeBookmark(articleId);
+        setSavedIds(prev => { const s = new Set(prev); s.delete(articleId); return s; });
+        toast.success('Bookmark removed');
+      } else {
+        await authApi.addBookmark(articleId);
+        setSavedIds(prev => new Set(prev).add(articleId));
+        toast.success('Article saved!');
+      }
+    } catch (error) {
+      console.error('Failed to toggle bookmark:', error);
+      toast.error('Failed to save article');
+    } finally {
+      setSavingIds(prev => { const s = new Set(prev); s.delete(articleId); return s; });
+    }
+  };
 
   const handlePageChangeWithScroll = (direction: 'next' | 'prev') => {
     handlePageChange(direction);
@@ -179,6 +215,9 @@ const CategoryArticlesPage = () => {
                 article={article}
                 onBiasCheck={handleBiasCheck}
                 processingIds={processingIds}
+                isSaved={savedIds.has(article.id)}
+                onToggleSave={isAuthenticated ? handleToggleSave : undefined}
+                savingIds={savingIds}
               />
             ))}
           </div>

@@ -4,6 +4,7 @@ import { api, authApi, type Article, type Statistics, type VisualizationData } f
 import { ChevronDown, BarChart3, TrendingUp, RefreshCw } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
+import toast from 'react-hot-toast';
 import ArticleIcon from '../../public/icons/ArticleIcon'
 import { BarChart } from '@mui/x-charts/BarChart';
 import { PieChart } from '@mui/x-charts/PieChart';
@@ -66,11 +67,14 @@ const ArticlesPage = () => {
   const [vizLoading, setVizLoading] = useState(false);
   const [vizDays, setVizDays] = useState(30);
   const [categoryOrder, setCategoryOrder] = useState<string[]>([]);
+  const [savedIds, setSavedIds] = useState<Set<number>>(new Set());
+  const [savingIds, setSavingIds] = useState<Set<number>>(new Set());
 
   useEffect(() => {
     fetchAllCategories();
     fetchStatistics();
     fetchCategoryOrder();
+    if (isAuthenticated) fetchBookmarks();
   }, [isAuthenticated]);
 
   const fetchCategoryOrder = async () => {
@@ -147,6 +151,38 @@ const ArticlesPage = () => {
       console.error('Failed to fetch categories:', error);
     } finally {
       setInitialLoading(false);
+    }
+  };
+
+  const fetchBookmarks = async () => {
+    try {
+      const result = await authApi.getBookmarks();
+      setSavedIds(new Set(result.bookmarks.map(b => b.article_id)));
+    } catch (error) {
+      console.error('Failed to fetch bookmarks:', error);
+    }
+  };
+
+  const handleToggleSave = async (articleId: number, e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (savingIds.has(articleId)) return;
+    setSavingIds(prev => new Set(prev).add(articleId));
+    try {
+      if (savedIds.has(articleId)) {
+        await authApi.removeBookmark(articleId);
+        setSavedIds(prev => { const s = new Set(prev); s.delete(articleId); return s; });
+        toast.success('Bookmark removed');
+      } else {
+        await authApi.addBookmark(articleId);
+        setSavedIds(prev => new Set(prev).add(articleId));
+        toast.success('Article saved!');
+      }
+    } catch (error) {
+      console.error('Failed to toggle bookmark:', error);
+      toast.error('Failed to save article');
+    } finally {
+      setSavingIds(prev => { const s = new Set(prev); s.delete(articleId); return s; });
     }
   };
 
@@ -553,7 +589,15 @@ const ArticlesPage = () => {
                 {/* Article Cards Grid */}
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                   {data.articles.slice(0, 6).map((article) => (
-                    <ArticleCard key={article.id} article={article} onBiasCheck={handleBiasCheck} processingIds={processingIds} />
+                    <ArticleCard
+                      key={article.id}
+                      article={article}
+                      onBiasCheck={handleBiasCheck}
+                      processingIds={processingIds}
+                      isSaved={savedIds.has(article.id)}
+                      onToggleSave={isAuthenticated ? handleToggleSave : undefined}
+                      savingIds={savingIds}
+                    />
                   ))}
                 </div>
 

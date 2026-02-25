@@ -193,8 +193,8 @@ export const authApi = {
     },
 
     // Bookmarks
-    getBookmarks: async (): Promise<{ bookmarks: { id: number; article_id: number; created_at: string }[]; total: number }> => {
-        const response = await authClient.get<{ bookmarks: { id: number; article_id: number; created_at: string }[]; total: number }>('/bookmarks');
+    getBookmarks: async (): Promise<{ bookmarks: BookmarkWithArticle[]; total: number }> => {
+        const response = await authClient.get<{ bookmarks: BookmarkWithArticle[]; total: number }>('/bookmarks');
         return response.data;
     },
 
@@ -408,6 +408,26 @@ export interface ClusteringStats {
     similarity_threshold: number;
 }
 
+export interface BookmarkArticle {
+    id: number;
+    title: string;
+    source: string;
+    category: string | null;
+    url: string;
+    original_content: string;
+    is_biased: boolean | null;
+    bias_score: number | null;
+    processed: boolean;
+    scraped_at: string | null;
+}
+
+export interface BookmarkWithArticle {
+    id: number;
+    article_id: number;
+    created_at: string;
+    article: BookmarkArticle | null;
+}
+
 export interface UserAnalysis {
     id: number;
     user_id: number;
@@ -572,6 +592,12 @@ export const api = {
         re_cluster?: boolean;
     }): Promise<any> => {
         const response = await apiClient.post('/clusters/generate', null, { params });
+        return response.data;
+    },
+
+    // Regenerate unified summary for a cluster (admin)
+    regenerateSummary: async (clusterId: number): Promise<any> => {
+        const response = await apiClient.post(`/clusters/${clusterId}/regenerate-summary`);
         return response.data;
     },
 

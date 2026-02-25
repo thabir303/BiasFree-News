@@ -2,20 +2,21 @@ import { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { api, type ClusterDetail, type PairwiseSimilarity } from '../services/api';
 import { useAuth } from '../contexts/AuthContext';
-import { ArrowLeft, Layers, ExternalLink, Loader2, Shield } from 'lucide-react';
+import { ArrowLeft, Layers, ExternalLink, Loader2, Shield, Sparkles } from 'lucide-react';
 import { SOURCE_LABELS, SOURCE_COLORS } from '../constants/sources';
 import usePageTitle from '../hooks/usePageTitle';
 
 const ClusterDetailPage = () => {
   usePageTitle('Cluster Detail');
   const { id } = useParams<{ id: string }>();
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, isAdmin } = useAuth();
   const [cluster, setCluster] = useState<ClusterDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [expandedArticle, setExpandedArticle] = useState<number | null>(null);
   const [debiasing, setDebiasing] = useState(false);
   const [debiasResult, setDebiasResult] = useState<any>(null);
-  const [showDebiased, setShowDebiased] = useState(false);
+  const [showDebiased, setShowDebiased] = useState(true);
+  const [generatingUnified, setGeneratingUnified] = useState(false);
 
   useEffect(() => {
     if (id) fetchCluster(parseInt(id));
@@ -30,6 +31,22 @@ const ClusterDetailPage = () => {
       console.error('Failed to fetch cluster:', error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleGenerateUnified = async () => {
+    if (!id || generatingUnified) return;
+    setGeneratingUnified(true);
+    try {
+      const result = await api.regenerateSummary(parseInt(id));
+      if (result && result.unified_content) {
+        // Refresh cluster data
+        await fetchCluster(parseInt(id));
+      }
+    } catch (error) {
+      console.error('Failed to generate unified article:', error);
+    } finally {
+      setGeneratingUnified(false);
     }
   };
 
@@ -161,16 +178,16 @@ const ClusterDetailPage = () => {
           ))}
         </div>
 
-        {/* ── Unified Content (if available) ── */}
-        {cluster.unified_content && (
+        {/* ── Unified Content or Generate Button ── */}
+        {cluster.unified_content ? (
           <div className="rounded-2xl border border-violet-500/30 bg-violet-500/5 backdrop-blur-sm p-6 mb-8">
             <div className="flex items-center justify-between mb-3">
               <h3 className="text-lg font-semibold text-white flex items-center gap-2">
                 <span className="text-violet-400">✦</span> Unified Article
               </h3>
               <div className="flex items-center gap-2">
-                {/* Toggle original/debiased */}
-                {(debiasResult?.debiased_content || cluster.debiased_unified_content) && (
+                {/* Toggle original/debiased — only show if debiased content exists AND differs from original */}
+                {(debiasResult?.debiased_content || (cluster.debiased_unified_content && cluster.debiased_unified_content !== cluster.unified_content)) && (
                   <button
                     onClick={() => setShowDebiased(!showDebiased)}
                     className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-all ${
@@ -182,8 +199,8 @@ const ClusterDetailPage = () => {
                     {showDebiased ? '✦ Showing Debiased' : 'Show Original'}
                   </button>
                 )}
-                {/* Debias button */}
-                {isAuthenticated && !debiasResult?.debiased_content && !cluster.debiased_unified_content && (
+                {/* Debias button — only show if no separate debiased version exists */}
+                {isAuthenticated && !debiasResult?.debiased_content && (!cluster.debiased_unified_content || cluster.debiased_unified_content === cluster.unified_content) && (
                   <button
                     onClick={handleDebiasUnified}
                     disabled={debiasing}
@@ -224,10 +241,35 @@ const ClusterDetailPage = () => {
 
             {/* Show debiased or original content */}
             <p className="text-sm leading-relaxed text-gray-400 whitespace-pre-wrap">
-              {showDebiased && (debiasResult?.debiased_content || cluster.debiased_unified_content)
+              {showDebiased && (debiasResult?.debiased_content || (cluster.debiased_unified_content && cluster.debiased_unified_content !== cluster.unified_content))
                 ? (debiasResult?.debiased_content || cluster.debiased_unified_content)
                 : cluster.unified_content}
             </p>
+          </div>
+        ) : (
+          <div className="rounded-2xl border border-dashed border-violet-500/30 bg-violet-500/5 backdrop-blur-sm p-6 mb-8">
+            <div className="flex flex-col items-center justify-center gap-3 py-4">
+              <Sparkles className="w-8 h-8 text-violet-400/60" />
+              <p className="text-sm text-gray-400 text-center">
+                No unified article has been generated for this cluster yet.
+              </p>
+              {isAdmin ? (
+                <button
+                  onClick={handleGenerateUnified}
+                  disabled={generatingUnified}
+                  className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-medium bg-violet-500/15 text-violet-400 border border-violet-500/30 hover:bg-violet-500/25 hover:border-violet-500/50 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
+                >
+                  {generatingUnified ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <Sparkles className="w-4 h-4" />
+                  )}
+                  {generatingUnified ? 'Generating Unified Article…' : 'Generate Unified Article'}
+                </button>
+              ) : (
+                <p className="text-xs text-gray-500"> </p>
+              )}
+            </div>
           </div>
         )}
 
