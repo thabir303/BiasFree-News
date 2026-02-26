@@ -2,7 +2,6 @@
 Enhanced API routes with database integration and scheduler control.
 """
 import logging
-import asyncio
 from typing import List, Optional, Dict, Any
 from datetime import date, datetime, timedelta
 from fastapi import APIRouter, HTTPException, Request, Depends, Query, BackgroundTasks
@@ -11,13 +10,10 @@ from slowapi import Limiter
 from slowapi.util import get_remote_address
 from app.models.schemas import (
     ArticleInput,
-    BiasAnalysisResponse,
-    DebiasResponse,
-    HeadlineResponse,
     FullProcessResponse
 )
 from app.database.database import get_db
-from app.database.models import Article, SchedulerLog, User
+from app.database.models import Article, User
 from app.services.bias_detector import BiasDetectorService
 from app.services.scheduler import get_scheduler
 from app.services.article_processor import ArticleProcessor
@@ -35,72 +31,6 @@ router = APIRouter(prefix="/api", tags=["bias-detection"])
 
 # Initialize services
 bias_detector = BiasDetectorService()
-
-
-@router.post("/analyze", response_model=BiasAnalysisResponse)
-@limiter.limit(f"{settings.rate_limit_per_minute}/minute")
-async def analyze_article(
-    request: Request,
-    article: ArticleInput,
-    current_user: User = Depends(require_authenticated)
-) -> BiasAnalysisResponse:
-    """
-    Analyze article for bias detection.
-    
-    - **content**: Article content (min 50 chars)
-    - **title**: Optional article title
-    
-    Returns bias analysis with identified biased terms.
-    """
-    try:
-        logger.info(f"Analyzing article with {len(article.content)} characters")
-        result = await bias_detector.analyze_bias(article.content, article.title)
-        return result
-    except Exception as e:
-        logger.error(f"Analysis endpoint error: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Analysis failed: {str(e)}")
-
-
-@router.post("/debias", response_model=DebiasResponse)
-@limiter.limit(f"{settings.rate_limit_per_minute}/minute")
-async def debias_article(
-    request: Request,
-    article: ArticleInput,
-    current_user: User = Depends(require_authenticated)
-) -> DebiasResponse:
-    """
-    Remove bias from article content and generate neutral version.
-    
-    - **content**: Biased article content
-    - **title**: Optional original title
-    
-    Returns debiased content with change tracking.
-    """
-    try:
-        logger.info(f"Debiasing article with {len(article.content)} characters")
-        
-        # First detect bias
-        analysis = await bias_detector.analyze_bias(article.content, article.title)
-        
-        if not analysis.is_biased:
-            return DebiasResponse(
-                original_content=article.content,
-                debiased_content=article.content,
-                changes_made=[],
-                total_changes=0,
-                bias_reduction_score=0.0
-            )
-        
-        # Convert biased terms to expected format
-        biased_terms = [term.model_dump() for term in analysis.biased_terms]
-        
-        # Then debias
-        result = await bias_detector.debias_article(article.content, biased_terms)
-        return result
-        
-    except Exception as e:
-        logger.error(f"Debias endpoint error: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Debiasing failed: {str(e)}")
 
 
 @router.post("/full-process", response_model=FullProcessResponse)
@@ -136,78 +66,6 @@ async def full_process(
     except Exception as e:
         logger.error(f"Full process endpoint error: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Full processing failed: {str(e)}")
-
-
-@router.post("/scrape")
-async def scrape_articles(
-    background_tasks: BackgroundTasks,
-    newspapers: Optional[List[str]] = Query(None, description="Specific newspapers to scrape"),
-    start_date: Optional[date] = Query(None, description="Start date (YYYY-MM-DD)"),
-    end_date: Optional[date] = Query(None, description="End date (YYYY-MM-DD)"),
-    max_articles: int = Query(50, ge=1, le=500, description="Maximum articles per newspaper"),
-    process_immediately: bool = Query(False, description="Process articles immediately after scraping"),
-    db: Session = Depends(get_db),
-    current_user: User = Depends(require_admin)
-):
-    """
-    Scrape articles from newspapers and optionally process them.
-    
-    - **newspapers**: Optional list of newspaper keys (scrapes all if empty)
-    - **start_date**: Optional start date (defaults to today)
-    - **end_date**: Optional end date (defaults to today)
-    - **max_articles**: Maximum articles per newspaper (1-500)
-    - **process_immediately**: Whether to process articles after scraping
-    """
-    try:
-        from app.services.scraper import NewsScraper
-        scraper = NewsScraper()
-        
-        # Set default dates if not provided
-        if not start_date:
-            start_date = date.today()
-        if not end_date:
-            end_date = date.today()
-        
-        # Validate date range
-        if start_date > end_date:
-            raise HTTPException(status_code=400, detail="Start date cannot be after end date")
-        
-        # Get newspaper keys
-        if not newspapers:
-            newspapers = get_all_newspaper_keys()
-        else:
-            # Validate provided newspapers
-            valid_newspapers = get_all_newspaper_keys()
-            invalid = [n for n in newspapers if n not in valid_newspapers]
-            if invalid:
-                raise HTTPException(status_code=400, detail=f"Invalid newspapers: {invalid}")
-        
-        logger.info(f"Starting scrape for {len(newspapers)} newspapers, dates: {start_date} to {end_date}")
-        
-        # Start scraping in background
-        background_tasks.add_task(
-            scraper.scrape_multiple_newspapers,
-            newspapers=newspapers,
-            start_date=start_date,
-            end_date=end_date,
-            max_articles_per_newspaper=max_articles,
-            process_after_scraping=process_immediately
-        )
-        
-        return {
-            "status": "started",
-            "message": f"Scraping started for {len(newspapers)} newspapers",
-            "newspapers": newspapers,
-            "date_range": f"{start_date} to {end_date}",
-            "max_articles_per_newspaper": max_articles,
-            "process_immediately": process_immediately
-        }
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Scrape endpoint error: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Scraping failed: {str(e)}")
 
 
 @router.post("/scrape/manual")
@@ -281,7 +139,7 @@ async def get_articles(
     - **date_to**: Filter by published date (to, inclusive) — YYYY-MM-DD
     """
     try:
-        query = db.query(Article)
+        query = db.query(Article) # create base query
         
         # Apply filters
         if processed is not None:
@@ -653,11 +511,11 @@ async def get_scheduler_status(
 ):
     """Get scheduler status, recent job history, and last run details."""
     try:
-        from app.services.redis_scheduler import redis_scheduler_service
-        
-        # Get Redis-based scheduler status
-        status = redis_scheduler_service.get_status()
-        
+        from app.services.scheduler import get_scheduler
+
+        scheduler = get_scheduler()
+        status = scheduler.get_status(db=db)
+
         return {
             "running": status["running"],
             "next_run": status["next_run"],
@@ -670,29 +528,6 @@ async def get_scheduler_status(
         raise HTTPException(status_code=500, detail=f"Failed to get scheduler status: {str(e)}")
 
 
-@router.post("/scheduler/test-run")
-async def schedule_test_run(
-    minutes: int = Query(1, ge=1, le=60, description="Minutes from now (1-60)"),
-    db: Session = Depends(get_db),
-    current_user: User = Depends(require_admin)
-):
-    """Schedule a one-time test scraping run after specified minutes."""
-    try:
-        from app.tasks import manual_scraping_task
-        
-        # Trigger manual scraping task immediately
-        task = manual_scraping_task.apply_async()
-        
-        return {
-            "message": f"Manual scraping task triggered",
-            "task_id": task.id
-        }
-    
-    except Exception as e:
-        logger.error(f"Test run error: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Failed to schedule test run: {str(e)}")
-
-
 @router.post("/scheduler/update")
 async def update_scheduler(
     hour: int = Query(..., ge=0, le=23, description="Hour (0-23) in BDT"),
@@ -701,21 +536,11 @@ async def update_scheduler(
 ):
     """Update the scheduler configuration (Admin only)."""
     try:
-        from app.services.redis_scheduler import redis_scheduler_service
-        from datetime import datetime
-        
-        # Validate that the time is in the future
-        now = datetime.now()
-        schedule_time = now.replace(hour=hour, minute=minute, second=0, microsecond=0)
-        
-        # Allow scheduling for today if time hasn't passed, otherwise tomorrow
-        if schedule_time <= now:
-            # Time has passed today, will run tomorrow
-            pass
-        
-        # Update the schedule
-        success = redis_scheduler_service.update_schedule(hour, minute)
-        
+        from app.services.scheduler import get_scheduler
+
+        scheduler = get_scheduler()
+        success = scheduler.update_schedule(hour, minute)
+
         if not success:
             raise HTTPException(status_code=400, detail="Failed to update schedule")
         
@@ -737,68 +562,27 @@ async def update_scheduler(
 async def toggle_scheduler(
     current_user: User = Depends(require_admin)
 ):
-    """Toggle scheduler on/off (Admin only). Pauses or resumes the APScheduler and syncs Redis state."""
+    """Toggle scheduler on/off (Admin only). Pauses or resumes the APScheduler."""
     try:
         from app.services.scheduler import get_scheduler
-        from app.services.redis_scheduler import redis_scheduler_service
-        
+
         scheduler = get_scheduler()
-        
-        if scheduler._is_running:
-            # Pause scheduler
-            scheduler.scheduler.pause()
-            scheduler._is_running = False
-            redis_scheduler_service.stop()
-            return {
-                "running": False,
-                "message": "Scheduler paused successfully. No automatic scraping will occur until resumed."
-            }
-        else:
-            # Resume scheduler
-            scheduler.scheduler.resume()
-            scheduler._is_running = True
-            redis_scheduler_service.start()
+        now_running = scheduler.toggle()
+
+        if now_running:
             return {
                 "running": True,
                 "message": "Scheduler resumed successfully. Automatic scraping will continue on schedule."
+            }
+        else:
+            return {
+                "running": False,
+                "message": "Scheduler paused successfully. No automatic scraping will occur until resumed."
             }
     
     except Exception as e:
         logger.error(f"Toggle scheduler error: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Failed to toggle scheduler: {str(e)}")
-
-
-@router.get("/scheduler/logs")
-async def get_scheduler_logs(
-    db: Session = Depends(get_db),
-    limit: int = Query(10, ge=1, le=50),
-    current_user: User = Depends(require_authenticated)
-):
-    """Get recent scheduler job logs."""
-    try:
-        logs = db.query(SchedulerLog).order_by(
-            SchedulerLog.created_at.desc()
-        ).limit(limit).all()
-        
-        result = []
-        for log in logs:
-            result.append({
-                "id": log.id,
-                "job_name": log.job_name,
-                "status": log.status,
-                "started_at": log.started_at.isoformat(),
-                "completed_at": log.completed_at.isoformat() if log.completed_at else None,
-                "articles_scraped": log.articles_scraped,
-                "articles_processed": log.articles_processed,
-                "errors": log.errors,
-                "error_message": log.error_message
-            })
-        
-        return {"logs": result}
-    
-    except Exception as e:
-        logger.error(f"Get scheduler logs error: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Failed to fetch logs: {str(e)}")
 
 
 @router.get("/newspapers")
@@ -841,7 +625,7 @@ def _get_cached(key: str) -> Any:
         return entry["data"]
     return None
 
-def _set_cached(key: str, data: Any, ttl: int = 30):
+def _set_cached(key: str, data: Any, ttl: int = 300):
     _cache[key] = {"data": data, "expires": _time.time() + ttl}
 
 
@@ -991,261 +775,6 @@ async def get_visualization_data(
     except Exception as e:
         logger.error(f"Visualization data error: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Failed to fetch visualization data: {str(e)}")
-
-
-# Enhanced batch processing routes with TOON format optimization
-from app.models.enhanced_schemas import (
-    BatchArticleInput,
-    BatchBiasAnalysisResponse,
-    EnhancedProcessingStats
-)
-from app.services.enhanced_bias_detector import EnhancedBiasDetectorService
-from app.services.enhanced_article_processor import EnhancedArticleProcessor
-
-
-@router.post("/enhanced/analyze-batch", response_model=BatchBiasAnalysisResponse)
-@limiter.limit(f"{settings.rate_limit_per_minute}/minute")
-async def analyze_articles_batch(
-    request: BatchArticleInput,
-    db: Session = Depends(get_db)
-) -> BatchBiasAnalysisResponse:
-    """
-    Analyze multiple articles for bias in a single LLM call with TOON format optimization.
-    
-    Features:
-    - Processes up to 20 articles per request
-    - Uses TOON format for 30-60% token reduction
-    - Single LLM call for entire batch
-    - Optimized for cost-effectiveness
-    
-    Args:
-        request: Batch article input with up to 20 articles
-        db: Database session
-        
-    Returns:
-        Batch bias analysis response with results for all articles
-        
-    Raises:
-        HTTPException: If processing fails
-    """
-    try:
-        logger.info(f"Received batch analysis request for {len(request.articles)} articles")
-        
-        # Initialize enhanced bias detector
-        enhanced_detector = EnhancedBiasDetectorService()
-        
-        # Convert input articles to format suitable for analysis
-        articles_data = []
-        for idx, article in enumerate(request.articles):
-            articles_data.append({
-                "id": f"article_{idx}",  # Generate unique ID
-                "title": article.title or "Untitled",
-                "content": article.content,
-                "source": "user_input"
-            })
-        
-        # Perform batch bias analysis
-        result = await enhanced_detector.analyze_bias_batch(
-            articles=articles_data,
-            use_toon_format=request.use_toon_format
-        )
-        
-        logger.info(
-            f"Batch analysis complete: {result.total_processed} articles, "
-            f"format: {result.format_used}, token savings: {result.token_savings}%"
-        )
-        
-        return result
-        
-    except Exception as e:
-        logger.error(f"Batch analysis failed: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Batch analysis failed: {str(e)}")
-
-
-@router.post("/enhanced/process-scraped-batch", response_model=EnhancedProcessingStats)
-async def process_scraped_articles_batch(
-    max_articles: int = Query(20, ge=1, le=100, description="Maximum articles to process"),
-    use_enhanced: bool = Query(True, description="Use enhanced TOON-based processing"),
-    db: Session = Depends(get_db)
-) -> EnhancedProcessingStats:
-    """
-    Process scraped articles from database in optimized batches with TOON format.
-    
-    Features:
-    - Processes up to 20 articles per LLM call
-    - Uses TOON format for token efficiency (30-60% reduction)
-    - Batch processing for cost optimization
-    - Automatic fallback to individual processing
-    - Maximum 20 articles per batch for LLM analysis
-    
-    Args:
-        max_articles: Maximum number of articles to process (1-100)
-        use_enhanced: Whether to use enhanced TOON-based processing
-        db: Database session
-        
-    Returns:
-        Processing statistics with batch metrics and token savings
-        
-    Raises:
-        HTTPException: If processing fails
-    """
-    try:
-        logger.info(f"Processing scraped articles: max={max_articles}, enhanced={use_enhanced}")
-        
-        # Initialize enhanced processor
-        processor = EnhancedArticleProcessor(db)
-        
-        # Process articles with batch optimization
-        stats = await processor.process_unprocessed_articles(limit=max_articles)
-        
-        logger.info(
-            f"Scraped articles processing complete: "
-            f"{stats['total_processed']} processed, "
-            f"{stats['successful']} successful, "
-            f"{stats['biased_found']} biased found"
-        )
-        
-        # Convert stats to response model
-        return EnhancedProcessingStats(
-            total_processed=stats["total_processed"],
-            successful=stats["successful"],
-            failed=stats["failed"],
-            biased_found=stats["biased_found"],
-            total_changes=stats["total_changes"],
-            batches_processed=stats.get("batches_processed", 0),
-            format_used=stats["format_used"],
-            token_savings_avg=stats.get("token_savings_avg", 0),
-            processing_time_seconds=stats.get("processing_time_seconds")
-        )
-        
-    except Exception as e:
-        logger.error(f"Scraped articles processing failed: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Processing failed: {str(e)}")
-
-
-@router.get("/enhanced/toon-demo")
-async def toon_format_demo() -> dict[str, Any]:
-    """
-    Demonstrate TOON format efficiency compared to JSON for article data.
-    
-    Returns:
-        Comparison showing token savings achieved by TOON format
-        with sample article data
-    """
-    try:
-        from app.utils.enhanced_toon_formatter import enhanced_toon_formatter
-        
-        # Sample article data for demonstration
-        sample_articles = [
-            {
-                "id": "1",
-                "title": "রাজনৈতিক দলের নেতা বলেছেন",
-                "content": "আজকের রাজনৈতিক পরিস্থিতি খুবই উত্তপ্ত। বিরোধী দলগুলো সরকারের বিরুদ্ধে কঠোর অবস্থান নিয়েছে।",
-                "source": "prothom_alo",
-                "date": "2024-01-09"
-            },
-            {
-                "id": "2", 
-                "title": "অর্থনৈতিক প্রবৃদ্ধির খবর",
-                "content": "দেশের অর্থনীতি দ্রুত উন্নতি করছে। বিশেষজ্ঞরা বলছেন এই প্রবৃদ্ধি টেকসই হবে।",
-                "source": "jugantor",
-                "date": "2024-01-09"
-            }
-        ]
-        
-        # Convert to TOON format
-        toon_output = enhanced_toon_formatter.format_article_batch_tabular(sample_articles, max_articles=2)
-        
-        # Calculate token savings
-        import json
-        original_json = json.dumps({"articles": sample_articles}, separators=(',', ':'))
-        savings = enhanced_toon_formatter.calculate_token_savings({"articles": sample_articles}, toon_output)
-        
-        return {
-            "json_format": original_json,
-            "toon_format": toon_output,
-            "token_savings": savings,
-            "efficiency_improvement": f"{savings['savings_percent']}% fewer tokens",
-            "description": "TOON format reduces token usage by declaring keys once and streaming values as rows",
-            "benefits": [
-                "30-60% reduction in token usage",
-                "More efficient LLM processing",
-                "Lower API costs",
-                "Faster response times",
-                "Better for batch processing"
-            ]
-        }
-        
-    except Exception as e:
-        logger.error(f"TOON demo failed: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"TOON demo failed: {str(e)}")
-
-
-@router.get("/enhanced/stats")
-async def get_enhanced_processing_stats(db: Session = Depends(get_db)) -> dict[str, Any]:
-    """
-    Get enhanced processing statistics including TOON format usage and token savings.
-    
-    Args:
-        db: Database session
-        
-    Returns:
-        Processing statistics with enhanced metrics
-        
-    Raises:
-        HTTPException: If stats retrieval fails
-    """
-    try:
-        from app.database.models import Article
-        
-        # Get basic article statistics
-        total_articles = db.query(Article).count()
-        processed_articles = db.query(Article).filter(Article.processed == True).count()
-        unprocessed_articles = db.query(Article).filter(Article.processed == False).count()
-        biased_articles = db.query(Article).filter(Article.is_biased == True).count()
-        
-        # Get recent processing errors
-        recent_errors = db.query(Article).filter(
-            Article.processing_error.isnot(None)
-        ).order_by(Article.processed_at.desc()).limit(5).all()
-        
-        error_summary = []
-        for article in recent_errors:
-            error_summary.append({
-                "article_id": article.id,
-                "title": article.title,
-                "error": article.processing_error,
-                "processed_at": article.processed_at.isoformat() if article.processed_at else None
-            })
-        
-        return {
-            "total_articles": total_articles,
-            "processed_articles": processed_articles,
-            "unprocessed_articles": unprocessed_articles,
-            "biased_articles": biased_articles,
-            "processing_rate": round((processed_articles / total_articles * 100) if total_articles > 0 else 0, 2),
-            "bias_detection_rate": round((biased_articles / processed_articles * 100) if processed_articles > 0 else 0, 2),
-            "recent_errors": error_summary,
-            "system_status": "operational",
-            "enhanced_features": {
-                "toon_format": True,
-                "batch_processing": True,
-                "max_articles_per_batch": 20,
-                "token_reduction": "30-60%",
-                "cost_optimization": "Significant API cost reduction",
-                "llm_efficiency": "Improved response times"
-            },
-            "usage_recommendations": [
-                "Use TOON format for batch processing (30-60% token savings)",
-                "Process articles in batches of 20 for optimal efficiency",
-                "Monitor token savings in processing statistics",
-                "Use enhanced endpoints for cost-effective processing"
-            ]
-        }
-        
-    except Exception as e:
-        logger.error(f"Enhanced stats retrieval failed: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Stats retrieval failed: {str(e)}")
 
 
 # ============================================

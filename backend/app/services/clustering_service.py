@@ -131,11 +131,11 @@ class ClusteringService:
     1. Fetch unclustered articles from DB (with time-window)
     2. Group by category (only compare within same category)
     3. Generate SEPARATE title embeddings and content embeddings
-    4. Compute combined similarity = 0.45·title_sim + 0.55·content_sim
+    4. Compute combined similarity = 0.35·title_sim + 0.65·content_sim
     5. Apply Agglomerative Clustering (complete linkage, distance_threshold)
     6. Post-filter: require ≥2 unique sources per cluster (cross-newspaper)
     7. Post-filter: verify keyword overlap (Jaccard ≥ 0.12)
-    8. Generate AI-powered unified & debiased article via OpenAI
+    8. Generate unified & debiased article
     9. Store ArticleCluster records
     """
 
@@ -144,10 +144,6 @@ class ClusteringService:
         self.model = get_embedding_model()
 
     # ── Embedding helpers ───────────────────────────────────────────
-
-    def generate_embedding(self, text: str) -> np.ndarray:
-        """Generate a 384-dim embedding for a single text."""
-        return self.model.encode(text, show_progress_bar=False)
 
     def generate_embeddings_batch(self, texts: List[str]) -> np.ndarray:
         """Batch encoding for efficiency."""

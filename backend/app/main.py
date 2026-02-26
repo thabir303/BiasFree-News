@@ -63,15 +63,10 @@ async def lifespan(app: FastAPI):
     logger.debug("Starting automated scraping scheduler...")
     scheduler = get_scheduler()
     scheduler.start()
-    logger.debug("Scheduler started - Daily scraping at 6:00 AM BDT")
-    
-    # Sync Redis scheduler state
-    try:
-        from app.services.redis_scheduler import redis_scheduler_service
-        redis_scheduler_service.start()
-        logger.debug("Redis scheduler state synced")
-    except Exception as e:
-        logger.warning(f"Could not sync Redis scheduler state: {e}")
+    logger.debug(
+        f"Scheduler started - Daily scraping at "
+        f"{scheduler._schedule_hour:02d}:{scheduler._schedule_minute:02d} BDT"
+    )
     
     logger.debug("=" * 80)
     
@@ -80,11 +75,6 @@ async def lifespan(app: FastAPI):
     # Shutdown
     logger.info("Shutting down BiasFree News API")
     scheduler.stop()
-    try:
-        from app.services.redis_scheduler import redis_scheduler_service
-        redis_scheduler_service.stop()
-    except Exception:
-        pass
     logger.info("Scheduler stopped")
 
 
@@ -115,10 +105,6 @@ app.add_middleware(SlowAPIMiddleware)
 
 # Include main API routes
 app.include_router(router)
-
-# Include manual processing routes (NEW - for on-demand bias analysis)
-from app.api.manual_processing import router as manual_router
-app.include_router(manual_router)
 
 # Include authentication routes
 from app.api.auth_routes import router as auth_router

@@ -1,4 +1,4 @@
 """API routes package."""
-from .routes import router
+from .routes_enhanced import router
 
 __all__ = ["router"]

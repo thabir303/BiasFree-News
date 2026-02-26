@@ -1,9 +1,10 @@
 """
 APScheduler service for automated daily scraping and processing.
+Single scheduler implementation — no Redis/Celery dependency.
 """
 import logging
 from datetime import datetime, timedelta
-from typing import Optional
+from typing import Optional, Dict, Any
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 from sqlalchemy.orm import Session
@@ -12,6 +13,7 @@ from app.database.models import SchedulerLog
 from app.services.enhanced_scraper import EnhancedNewsScraper
 from app.services.article_processor import ArticleProcessor
 from app.config.newspapers import get_enabled_newspapers
+from app.config.settings import settings
 
 logger = logging.getLogger(__name__)
 
@@ -19,70 +21,127 @@ logger = logging.getLogger(__name__)
 class SchedulerService:
     """
     Background scheduler for automated scraping and processing.
+    Uses APScheduler with AsyncIOScheduler — runs in-process with the FastAPI server.
+    Supports dynamic schedule updates, pause/resume, and status queries.
     """
-    
+
     def __init__(self):
         """Initialize scheduler."""
         self.scheduler = AsyncIOScheduler()
         self._is_running = False
-    
+        self._schedule_hour: int = settings.scheduler_hour
+        self._schedule_minute: int = settings.scheduler_minute
+        self._last_run: Optional[Dict[str, Any]] = None
+
+    # ── Lifecycle ────────────────────────────────────────────────────
+
     def start(self):
-        """Start the scheduler."""
+        """Start the scheduler with the configured daily cron job."""
         if self._is_running:
             logger.warning("Scheduler already running")
             return
-        
-        # Schedule daily scraping at 6 AM Bangladesh time (UTC+6)
-        # Using UTC time: 6 AM BDT = 12 AM UTC
-        self.scheduler.add_job(
-            self.daily_scrape_and_process,
-            CronTrigger(hour=0, minute=0),  # 12:00 AM UTC = 6:00 AM BDT
-            id='daily_scraping',
-            name='Daily Newspaper Scraping',
-            replace_existing=True
-        )
-        
-        logger.debug("Scheduled daily scraping at 6:00 AM BDT (00:00 UTC)")
-        
+
+        self._add_daily_job()
         self.scheduler.start()
         self._is_running = True
-        logger.debug("Scheduler started successfully")
-    
+        logger.debug(
+            f"Scheduler started — daily scraping at "
+            f"{self._schedule_hour:02d}:{self._schedule_minute:02d} BDT"
+        )
+
     def stop(self):
-        """Stop the scheduler."""
+        """Stop the scheduler gracefully."""
         if not self._is_running:
             return
-        
         self.scheduler.shutdown(wait=False)
         self._is_running = False
         logger.info("Scheduler stopped")
-    
-    def schedule_test_run(self, minutes_from_now: int = 1):
-        """Schedule a one-time test run after specified minutes."""
-        if not self._is_running:
-            raise RuntimeError("Scheduler not running")
-        
-        run_time = datetime.now() + timedelta(minutes=minutes_from_now)
-        
-        self.scheduler.add_job(
-            self.daily_scrape_and_process,
-            'date',
-            run_date=run_time,
-            id='test_scraping',
-            name='Test Scraping Run',
-            replace_existing=True
+
+    # ── Dynamic schedule management ──────────────────────────────────
+
+    def update_schedule(self, hour: int, minute: int) -> bool:
+        """
+        Update the daily scraping schedule.
+
+        Args:
+            hour:   0-23 in BDT
+            minute: 0-59
+
+        Returns:
+            True on success, False on validation error.
+        """
+        if not (0 <= hour <= 23 and 0 <= minute <= 59):
+            logger.error(f"Invalid schedule time: {hour}:{minute}")
+            return False
+
+        self._schedule_hour = hour
+        self._schedule_minute = minute
+
+        # Re-add the job with the new trigger (replace_existing handles dedup)
+        if self._is_running:
+            self._add_daily_job()
+
+        logger.info(
+            f"Scheduler updated to run daily at {hour:02d}:{minute:02d} BDT"
         )
-        
-        logger.info(f"Test scraping scheduled at {run_time.strftime('%Y-%m-%d %H:%M:%S')}")
-        return run_time
-    
-    def get_last_run_info(self, db: Session):
-        """Get information about the last scheduler run."""
-        last_log = db.query(SchedulerLog).order_by(SchedulerLog.started_at.desc()).first()
-        
+        return True
+
+    def toggle(self) -> bool:
+        """
+        Toggle scheduler on/off (pause/resume).
+
+        Returns:
+            The new running state (True = running, False = paused).
+        """
+        if self._is_running:
+            self.scheduler.pause()
+            self._is_running = False
+            logger.info("Scheduler paused")
+            return False
+        else:
+            self.scheduler.resume()
+            self._is_running = True
+            logger.info("Scheduler resumed")
+            return True
+
+    # ── Status / introspection ───────────────────────────────────────
+
+    @property
+    def is_running(self) -> bool:
+        return self._is_running
+
+    def get_status(self, db: Optional[Session] = None) -> Dict[str, Any]:
+        """
+        Comprehensive scheduler status for the API.
+
+        Returns dict with running, schedule, next_run, last_run.
+        """
+        # Next run from APScheduler
+        next_run = self._get_next_run_time()
+
+        # Last run — prefer DB log, fall back to in-memory
+        last_run = None
+        if db is not None:
+            last_run = self.get_last_run_info(db)
+        if last_run is None:
+            last_run = self._last_run
+
+        return {
+            "running": self._is_running,
+            "schedule": f"Daily at {self._schedule_hour:02d}:{self._schedule_minute:02d} BDT",
+            "next_run": next_run.isoformat() if next_run else None,
+            "last_run": last_run,
+        }
+
+    def get_last_run_info(self, db: Session) -> Optional[Dict[str, Any]]:
+        """Get information about the last scheduler run from the database."""
+        last_log = (
+            db.query(SchedulerLog)
+            .order_by(SchedulerLog.started_at.desc())
+            .first()
+        )
         if not last_log:
             return None
-        
         return {
             "job_name": last_log.job_name,
             "status": last_log.status,
@@ -91,8 +150,31 @@ class SchedulerService:
             "articles_scraped": last_log.articles_scraped,
             "articles_processed": last_log.articles_processed,
             "errors": last_log.errors,
-            "error_message": last_log.error_message
+            "error_message": last_log.error_message,
         }
+
+    # ── Test helpers ─────────────────────────────────────────────────
+
+   # ── Internal helpers ─────────────────────────────────────────────
+
+    def _add_daily_job(self):
+        """Add (or replace) the daily cron job using current schedule."""
+        # BDT = UTC+6, so convert BDT hour to UTC
+        utc_hour = (self._schedule_hour - 6) % 24
+        self.scheduler.add_job(
+            self.daily_scrape_and_process,
+            CronTrigger(hour=utc_hour, minute=self._schedule_minute),
+            id="daily_scraping",
+            name="Daily Newspaper Scraping",
+            replace_existing=True,
+        )
+
+    def _get_next_run_time(self) -> Optional[datetime]:
+        """Return the next scheduled fire time for the daily job."""
+        job = self.scheduler.get_job("daily_scraping")
+        if job and job.next_run_time:
+            return job.next_run_time
+        return None
     
     async def daily_scrape_and_process(self):
         """
@@ -172,12 +254,21 @@ class SchedulerService:
                 errors.append(cluster_error)
             
             # Update log
-            log.status = "success" if not errors else "partial"
+            final_status = "success" if not errors else "partial"
+            log.status = final_status
             log.completed_at = datetime.utcnow()
             log.articles_scraped = total_scraped
             log.articles_processed = total_processed
             log.errors = errors if errors else None
             db.commit()
+
+            # Track in memory for instant status queries
+            self._last_run = {
+                "timestamp": datetime.now().isoformat(),
+                "status": final_status,
+                "articles_count": total_scraped,
+                "error": None,
+            }
             
             logger.info("=" * 80)
             logger.info(
@@ -196,6 +287,13 @@ class SchedulerService:
             log.articles_scraped = total_scraped
             log.articles_processed = total_processed
             db.commit()
+
+            self._last_run = {
+                "timestamp": datetime.now().isoformat(),
+                "status": "failed",
+                "articles_count": total_scraped,
+                "error": error_msg,
+            }
         
         finally:
             db.close()

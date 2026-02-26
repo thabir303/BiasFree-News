@@ -38,6 +38,7 @@ const DashboardPage = () => {
   const [bookmarksTotal, setBookmarksTotal] = useState(0);
   const [bookmarksLoading, setBookmarksLoading] = useState(true);
   const [removingBookmark, setRemovingBookmark] = useState<number | null>(null);
+  const [removeBookmarkTarget, setRemoveBookmarkTarget] = useState<number | null>(null);
 
   useEffect(() => {
     fetchAnalyses();
@@ -427,7 +428,7 @@ const DashboardPage = () => {
 
                     {/* Remove bookmark */}
                     <button
-                      onClick={(e) => { e.preventDefault(); e.stopPropagation(); handleRemoveBookmark(article.id); }}
+                      onClick={(e) => { e.preventDefault(); e.stopPropagation(); setRemoveBookmarkTarget(article.id); }}
                       disabled={removingBookmark === article.id}
                       className="shrink-0 p-1.5 rounded-lg text-gray-600 hover:text-red-400 hover:bg-red-500/10 transition-all opacity-0 group-hover:opacity-100 disabled:opacity-40"
                       title="Remove bookmark"
@@ -580,6 +581,17 @@ const DashboardPage = () => {
         variant="danger"
         onConfirm={() => deleteTarget !== null && handleDelete(deleteTarget)}
         onCancel={() => setDeleteTarget(null)}
+      />
+
+      {/* Remove Bookmark Confirmation Dialog */}
+      <ConfirmDialog
+        open={removeBookmarkTarget !== null}
+        title="Remove Saved Article"
+        message="Are you sure you want to remove this article from your saved list?"
+        confirmLabel="Yes, Remove"
+        variant="danger"
+        onConfirm={() => { if (removeBookmarkTarget !== null) { handleRemoveBookmark(removeBookmarkTarget); setRemoveBookmarkTarget(null); } }}
+        onCancel={() => setRemoveBookmarkTarget(null)}
       />
     </div>
   );

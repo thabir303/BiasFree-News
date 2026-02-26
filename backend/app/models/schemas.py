@@ -190,32 +190,6 @@ class HeadlineResponse(BaseModel):
     recommended_headline: str = Field(..., description="Most recommended headline")
     reasoning: str = Field(..., description="Why this headline is recommended")
 
-
-class ScrapeRequest(BaseModel):
-    """Request model for article scraping."""
-    source: str = Field(..., description="Newspaper source: prothom_alo, jugantor, daily_star, dhaka_tribune")
-    start_date: date = Field(..., description="Start date for scraping")
-    end_date: date = Field(..., description="End date for scraping")
-    section_ids: Optional[List[str]] = Field(None, description="Optional section IDs for Prothom Alo (e.g., ['22237', '17533,17535'])")
-    
-    @field_validator("source")
-    @classmethod
-    def validate_source(cls, v: str) -> str:
-        """Validate newspaper source."""
-        allowed_sources = ["prothom_alo", "jugantor", "daily_star", "dhaka_tribune", "samakal"]
-        if v.lower() not in allowed_sources:
-            raise ValueError(f"Source must be one of: {', '.join(allowed_sources)}")
-        return v.lower()
-    
-    @field_validator("end_date")
-    @classmethod
-    def validate_date_range(cls, v: date, info) -> date:
-        """Ensure end_date is after start_date."""
-        if "start_date" in info.data and v < info.data["start_date"]:
-            raise ValueError("end_date must be after start_date")
-        return v
-
-
 class ScrapedArticle(BaseModel):
     """Model for a scraped article."""
     title: str
@@ -224,14 +198,6 @@ class ScrapedArticle(BaseModel):
     published_date: Optional[str] = None
     source: str
     category: Optional[str] = None  # রাজনীতি, বিশ্ব, মতামত, বাংলাদেশ
-
-
-class ScrapeResponse(BaseModel):
-    """Response model for scraping results."""
-    articles: List[ScrapedArticle] = Field(default_factory=list)
-    total_count: int = Field(..., description="Total articles scraped")
-    source: str = Field(..., description="Newspaper source")
-    date_range: str = Field(..., description="Date range scraped")
 
 
 class FullProcessResponse(BaseModel):

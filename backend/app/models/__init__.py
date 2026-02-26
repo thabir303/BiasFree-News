@@ -4,8 +4,6 @@ from .schemas import (
     BiasAnalysisResponse,
     DebiasResponse,
     HeadlineResponse,
-    ScrapeRequest,
-    ScrapeResponse,
     FullProcessResponse,
     BiasedTerm,
     ContentChange
@@ -16,8 +14,6 @@ __all__ = [
     "BiasAnalysisResponse",
     "DebiasResponse",
     "HeadlineResponse",
-    "ScrapeRequest",
-    "ScrapeResponse",
     "FullProcessResponse",
     "BiasedTerm",
     "ContentChange"

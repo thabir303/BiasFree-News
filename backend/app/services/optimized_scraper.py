@@ -688,7 +688,6 @@ class OptimizedJugantorScraper(OptimizedNewspaperScraper):
             return None
 
 
-class OptimizedNewsScraper:
     """Main optimized scraper class that coordinates all newspaper scrapers."""
     
     def __init__(self):

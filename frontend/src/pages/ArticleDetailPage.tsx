@@ -202,11 +202,6 @@ const ArticleDetailPage = () => {
         parts.push(<span key={`text-${idx}`}>{text.slice(lastIndex, span.start)}</span>);
       }
 
-      const tooltipContent =
-        type === 'biased'
-          ? `Biased: ${span.data.reason}\nSuggestion: ${span.data.neutral_alternative}`
-          : `Original: ${span.data.original}\nReason: ${span.data.reason}`;
-
       parts.push(
         <span
           key={`highlight-${idx}`}
@@ -218,7 +213,6 @@ const ArticleDetailPage = () => {
                 : 'bg-yellow-500/20 text-yellow-300 border-b-2 border-yellow-500'
             }
           `}
-          title={tooltipContent}
         >
           {span.text}
           <span className="invisible group-hover:visible absolute z-10 w-64 p-3 mt-2 text-sm bg-gray-900 border border-gray-700 rounded-lg shadow-xl left-0 top-full">
