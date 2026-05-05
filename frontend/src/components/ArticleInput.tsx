@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useLanguage } from '../contexts/LanguageContext';
 
 interface ArticleInputProps {
     onAnalyze: (content: string, title: string) => void;
@@ -8,6 +9,7 @@ interface ArticleInputProps {
 export default function ArticleInput({ onAnalyze, loading }: ArticleInputProps) {
     const [content, setContent] = useState('');
     const [title, setTitle] = useState('');
+    const { translate } = useLanguage();
 
     const MAX_CONTENT_CHARS = 2000;
     const MIN_CONTENT_CHARS = 50;
@@ -29,11 +31,11 @@ export default function ArticleInput({ onAnalyze, loading }: ArticleInputProps) 
 
     return (
         <div className="glass-card w-full p-6">
-            <h2 className="text-2xl font-bold mb-4 text-primary-400">নিবন্ধ বিশ্লেষণ করুন</h2>
+            <h2 className="text-2xl font-bold mb-4 text-primary-400">{translate('একটি নিবন্ধ বিশ্লেষণ করুন', 'Analyze an article')}</h2>
 
             <form onSubmit={handleSubmit} className="space-y-4">
                 <div>
-                    <label className="block text-sm font-medium text-gray-300 mb-2">শিরোনাম (Optional)</label>
+                    <label className="block text-sm font-medium text-gray-300 mb-2">{translate('শিরোনাম (ঐচ্ছিক)', 'Title (Optional)')}</label>
                     <input
                         type="text"
                         value={title}
@@ -49,7 +51,7 @@ export default function ArticleInput({ onAnalyze, loading }: ArticleInputProps) 
                 </div>
 
                 <div>
-                    <label className="block text-sm font-medium text-gray-300 mb-2">নিবন্ধ *</label>
+                    <label className="block text-sm font-medium text-gray-300 mb-2">{translate('নিবন্ধ *', 'Article *')}</label>
                     <textarea
                         value={content}
                         onChange={(e) => setContent(e.target.value)}
@@ -69,7 +71,7 @@ export default function ArticleInput({ onAnalyze, loading }: ArticleInputProps) 
                     disabled={!isValid || loading}
                     className="btn-primary w-full disabled:opacity-50"
                 >
-                    {loading ? 'Processing...' : '🔍 Analyze'}
+                    {loading ? translate('প্রক্রিয়াকরণ চলছে...', 'Processing...') : translate('🔍 বিশ্লেষণ', '🔍 Analyze')}
                 </button>
             </form>
         </div>

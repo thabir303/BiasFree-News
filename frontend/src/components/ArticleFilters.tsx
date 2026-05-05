@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { Funnel, CalendarDays, X, ChevronDown, Check, Search } from 'lucide-react';
 import DateRangePicker from './DateRangePicker';
+import { useLanguage } from '../contexts/LanguageContext';
 
 export interface FilterState {
   source: string;
@@ -23,25 +24,25 @@ interface ArticleFiltersProps {
 const today = new Date().toISOString().split('T')[0];
 
 const SOURCE_OPTIONS = [
-  { value: '', label: 'All Sources', logo: null },
-  { value: 'prothom_alo', label: 'প্রথম আলো', logo: '/prothomalo.png' },
-  { value: 'daily_star', label: 'ডেইলি স্টার', logo: '/dailystar.png' },
-  { value: 'jugantor', label: 'যুগান্তর', logo: '/jugantor.png' },
-  { value: 'samakal', label: 'সমকাল', logo: '/samakal.png' },
-  { value: 'naya_diganta', label: 'নয়া দিগন্ত', logo: '/nayadiganta.png' },
-  { value: 'ittefaq', label: 'ইত্তেফাক', logo: '/ittefaq.png' },
+  { value: '', label: { bn: 'সব উৎস', en: 'All Sources' }, logo: null },
+  { value: 'prothom_alo', label: { bn: 'প্রথম আলো', en: 'Prothom Alo' }, logo: '/prothomalo.png' },
+  { value: 'daily_star', label: { bn: 'ডেইলি স্টার', en: 'The Daily Star' }, logo: '/dailystar.png' },
+  { value: 'jugantor', label: { bn: 'যুগান্তর', en: 'Jugantor' }, logo: '/jugantor.png' },
+  { value: 'samakal', label: { bn: 'সমকাল', en: 'Samakal' }, logo: '/samakal.png' },
+  { value: 'naya_diganta', label: { bn: 'নয়া দিগন্ত', en: 'Naya Diganta' }, logo: '/nayadiganta.png' },
+  { value: 'ittefaq', label: { bn: 'ইত্তেফাক', en: 'Ittefaq' }, logo: '/ittefaq.png' },
 ];
 
 const BIAS_OPTIONS = [
-  { value: '', label: 'All Articles', badge: null },
+  { value: '', label: { bn: 'সব প্রবন্ধ', en: 'All Articles' }, badge: null },
   {
     value: 'true',
-    label: 'Biased Only',
+    label: { bn: 'শুধু পক্ষপাতদুষ্ট', en: 'Biased Only' },
     badge: { text: 'Biased', bg: 'bg-red-500/15', textColor: 'text-red-400', border: 'border-red-500/30', dot: 'bg-red-400' },
   },
   {
     value: 'false',
-    label: 'Unbiased Only',
+    label: { bn: 'শুধু নিরপেক্ষ', en: 'Unbiased Only' },
     badge: { text: 'Neutral', bg: 'bg-emerald-500/15', textColor: 'text-emerald-400', border: 'border-emerald-500/30', dot: 'bg-emerald-400' },
   },
 ];
@@ -55,7 +56,7 @@ const LIMIT_OPTIONS = [
 /* ─── Custom Dropdown ────────────────────────────────── */
 interface DropdownOption {
   value: string;
-  label: string;
+  label: { bn: string; en: string };
   logo?: string | null;
   badge?: { text: string; bg: string; textColor: string; border: string; dot: string } | null;
 }
@@ -71,6 +72,7 @@ interface CustomDropdownProps {
 }
 
 const CustomDropdown: React.FC<CustomDropdownProps> = ({ options, value, onChange, disabled = false, dropdownId, openDropdown, setOpenDropdown }) => {
+  const { language } = useLanguage();
   const open = dropdownId ? openDropdown === dropdownId : false;
   const [localOpen, setLocalOpen] = useState(false);
   const isOpen = dropdownId ? open : localOpen;
@@ -99,8 +101,8 @@ const CustomDropdown: React.FC<CustomDropdownProps> = ({ options, value, onChang
     if (option.logo) {
       return (
         <span className="flex items-center gap-2">
-          <img src={option.logo} alt={option.label} className={`${small ? 'w-7 h-7' : 'w-8 h-8'} rounded-md object-contain shrink-0 bg-white p-0.2`} />
-          <span className="text-white">{option.label}</span>
+          <img src={option.logo} alt={option.label[language]} className={`${small ? 'w-7 h-7' : 'w-8 h-8'} rounded-md object-contain shrink-0 bg-white p-0.2`} />
+          <span className="text-white">{option.label[language]}</span>
         </span>
       );
     }
@@ -112,7 +114,7 @@ const CustomDropdown: React.FC<CustomDropdownProps> = ({ options, value, onChang
         </span>
       );
     }
-    return <span className="text-gray-400">{option.label}</span>;
+    return <span className="text-gray-400">{option.label[language]}</span>;
   };
 
   return (
@@ -174,6 +176,7 @@ const ArticleFilters: React.FC<ArticleFiltersProps> = ({
   onClearAll,
   loading = false,
 }) => {
+  const { translate } = useLanguage();
   const [openDropdown, setOpenDropdown] = useState<string | null>(null);
 
   const activeFiltersCount = [
@@ -194,7 +197,7 @@ const ArticleFilters: React.FC<ArticleFiltersProps> = ({
             type="text"
             value={filters.search || ''}
             onChange={(e) => onFilterChange('search', e.target.value)}
-            placeholder="Search by title or content..."
+            placeholder={translate('শিরোনাম বা বিষয়বস্তু দিয়ে খুঁজুন...', 'Search by title or content...')}
             disabled={loading}
             className="w-full pl-10 pr-4 py-2.5 bg-gray-800/60 border border-gray-700/50 rounded-xl text-sm text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-primary-500/30 focus:border-primary-500/50 disabled:opacity-50 transition-all"
           />
@@ -210,7 +213,7 @@ const ArticleFilters: React.FC<ArticleFiltersProps> = ({
       <div className="flex items-center justify-between mb-5">
         <h3 className="text-sm font-medium text-gray-300 flex items-center gap-2">
           <Funnel size={15} />
-          Filters
+          {translate('ফিল্টার', 'Filters')}
           {activeFiltersCount > 0 && (
             <span className="px-1.5 py-0.5 text-[10px] font-semibold rounded-full bg-primary-500/20 text-primary-400 tabular-nums">
               {activeFiltersCount}
@@ -224,7 +227,7 @@ const ArticleFilters: React.FC<ArticleFiltersProps> = ({
             className="flex items-center gap-1 text-xs text-gray-500 hover:text-gray-300 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
           >
             <X size={12} />
-            Clear all
+            {translate('সব মুছুন', 'Clear all')}
           </button>
         )}
       </div>
@@ -233,7 +236,7 @@ const ArticleFilters: React.FC<ArticleFiltersProps> = ({
         {/* Source Filter */}
         <div className={`relative ${openDropdown === 'source' ? 'z-100' : 'z-0'}`}>
           <label className="block text-[11px] font-medium text-gray-500 uppercase tracking-wider mb-1.5">
-            Source
+            {translate('উৎস', 'Source')}
           </label>
           <CustomDropdown
             options={SOURCE_OPTIONS}
@@ -249,7 +252,7 @@ const ArticleFilters: React.FC<ArticleFiltersProps> = ({
         {/* Bias Status Filter */}
         <div className={`relative ${openDropdown === 'bias' ? 'z-100' : 'z-0'}`}>
           <label className="block text-[11px] font-medium text-gray-500 uppercase tracking-wider mb-1.5">
-            Bias Status
+            {translate('পক্ষপাত অবস্থা', 'Bias Status')}
           </label>
           <CustomDropdown
             options={BIAS_OPTIONS}
@@ -266,7 +269,7 @@ const ArticleFilters: React.FC<ArticleFiltersProps> = ({
         <div className="sm:col-span-2">
           <label className="flex items-center gap-1 text-[11px] font-medium text-gray-500 uppercase tracking-wider mb-1.5">
             <CalendarDays size={11} />
-            Date Range
+            {translate('তারিখের সীমা', 'Date Range')}
           </label>
           <DateRangePicker
             fromDate={filters.date_from}
@@ -282,7 +285,7 @@ const ArticleFilters: React.FC<ArticleFiltersProps> = ({
       {/* Per Page + Sort — second row */}
       <div className="mt-3 flex items-center gap-3 flex-wrap">
         <label className="text-[11px] font-medium text-gray-500 uppercase tracking-wider shrink-0">
-          Per Page
+          {translate('প্রতি পাতায়', 'Per Page')}
         </label>
         <div className="flex gap-1.5">
           {LIMIT_OPTIONS.map((option) => (
@@ -303,12 +306,12 @@ const ArticleFilters: React.FC<ArticleFiltersProps> = ({
 
         {/* Sort Options */}
         <div className="flex items-center gap-1.5 ml-4">
-          <label className="text-[11px] font-medium text-gray-500 uppercase tracking-wider shrink-0">Sort</label>
+          <label className="text-[11px] font-medium text-gray-500 uppercase tracking-wider shrink-0">{translate('বাছাই', 'Sort')}</label>
           {[
-            { value: '', label: 'Newest' },
-            { value: 'oldest', label: 'Oldest' },
-            { value: 'bias_high', label: 'Bias ↓' },
-            { value: 'bias_low', label: 'Bias ↑' },
+            { value: '', label: translate('নতুনতম', 'Newest') },
+            { value: 'oldest', label: translate('পুরোনোতম', 'Oldest') },
+            { value: 'bias_high', label: translate('পক্ষপাত ↓', 'Bias ↓') },
+            { value: 'bias_low', label: translate('পক্ষপাত ↑', 'Bias ↑') },
           ].map((opt) => (
             <button
               key={opt.value}

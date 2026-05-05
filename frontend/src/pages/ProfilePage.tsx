@@ -156,7 +156,7 @@ const ProfilePage = () => {
             </div>
             <div>
               <h1 className="text-3xl sm:text-4xl font-bold text-white tracking-tight">
-                প্রোফাইল
+                Profile
               </h1>
               <p className="text-sm text-gray-500 mt-0.5">Profile Settings</p>
             </div>
@@ -253,7 +253,7 @@ const ProfilePage = () => {
           <div className="flex items-center justify-between mb-2">
             <h3 className="text-sm font-semibold text-white flex items-center gap-2">
               <ListOrdered className="w-4 h-4 text-primary-400" />
-              ক্যাটাগরি অগ্রাধিকার
+              Category Priority
             </h3>
             <button
               onClick={handleSave}
@@ -283,7 +283,7 @@ const ProfilePage = () => {
             </button>
           </div>
           <p className="text-[11px] text-gray-500 mb-5">
-            Category Priority — Drag or use arrows to reorder. Articles page will show categories in this order.
+            Category Priority — Drag or use arrows to reorder. The Articles page will show categories in this order.
           </p>
 
           <div className="space-y-2.5">
@@ -347,7 +347,7 @@ const ProfilePage = () => {
           </div>
 
           <p className="text-[10px] text-gray-600 mt-4 text-center">
-            🔢 #1 = সর্বোচ্চ অগ্রাধিকার · Highest priority category appears first in Articles page
+            🔢 #1 = highest priority · The highest priority category appears first on the Articles page
           </p>
         </div>
 

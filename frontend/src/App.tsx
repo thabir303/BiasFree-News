@@ -1,6 +1,7 @@
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import { Toaster } from 'react-hot-toast';
 import { AuthProvider } from './contexts/AuthContext';
+import { LanguageProvider } from './contexts/LanguageContext';
 import { ThemeProvider, useTheme } from './contexts/ThemeContext';
 import Navbar from './components/Navbar';
 import Footer from './components/Footer';
@@ -94,32 +95,34 @@ const AppContent = () => {
 function App() {
   return (
     <Router>
-      <ThemeProvider>
-        <AuthProvider>
-          <ErrorBoundary>
-            <AppContent />
-          </ErrorBoundary>
-          <Toaster
-            position="top-right"
-            toastOptions={{
-              duration: 4000,
-              style: {
-                background: '#1e293b',
-                color: '#f1f5f9',
-                border: '1px solid #334155',
-                borderRadius: '12px',
-                fontSize: '14px',
-              },
-              success: {
-                iconTheme: { primary: '#34d399', secondary: '#1e293b' },
-              },
-              error: {
-                iconTheme: { primary: '#f87171', secondary: '#1e293b' },
-              },
-            }}
-          />
-        </AuthProvider>
-      </ThemeProvider>
+      <LanguageProvider>
+        <ThemeProvider>
+          <AuthProvider>
+            <ErrorBoundary>
+              <AppContent />
+            </ErrorBoundary>
+            <Toaster
+              position="top-right"
+              toastOptions={{
+                duration: 4000,
+                style: {
+                  background: '#1e293b',
+                  color: '#f1f5f9',
+                  border: '1px solid #334155',
+                  borderRadius: '12px',
+                  fontSize: '14px',
+                },
+                success: {
+                  iconTheme: { primary: '#34d399', secondary: '#1e293b' },
+                },
+                error: {
+                  iconTheme: { primary: '#f87171', secondary: '#1e293b' },
+                },
+              }}
+            />
+          </AuthProvider>
+        </ThemeProvider>
+      </LanguageProvider>
     </Router>
   );
 }

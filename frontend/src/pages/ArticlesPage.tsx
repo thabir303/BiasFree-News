@@ -259,7 +259,7 @@ const ArticlesPage = () => {
                   <BarChart3 className="w-5 h-5 text-white" />
                 </div>
                 <div className="text-left">
-                  <h3 className="text-sm font-semibold text-white">সংবাদ পরিসংখ্যান</h3>
+                  <h3 className="text-sm font-semibold text-white">News Statistics</h3>
                   <p className="text-[11px] text-gray-500">Article Statistics &amp; Insights</p>
                 </div>
               </div>
@@ -270,7 +270,7 @@ const ArticlesPage = () => {
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
                 {/* ─ Source Distribution Bar Chart ─ */}
                 <div className="rounded-2xl border border-gray-800/60 bg-gray-900/40 backdrop-blur-sm p-6">
-                  <h4 className="text-sm font-semibold text-white mb-1">উৎস ভিত্তিক সংবাদ</h4>
+                  <h4 className="text-sm font-semibold text-white mb-1">News by Source</h4>
                   <p className="text-[11px] text-gray-500 mb-5">Articles by Source</p>
                   
                   {/* MUI Bar Chart */}
@@ -324,7 +324,7 @@ const ArticlesPage = () => {
 
                 {/* ─ Analysis Overview (Pie Chart) ─ */}
                 <div className="rounded-2xl border border-gray-800/60 bg-gray-900/40 backdrop-blur-sm p-6">
-                  <h4 className="text-sm font-semibold text-white mb-1">বিশ্লেষণ অবস্থা</h4>
+                  <h4 className="text-sm font-semibold text-white mb-1">Analysis Status</h4>
                   <p className="text-[11px] text-gray-500 mb-4">Analysis Overview</p>
 
                   {/* MUI Pie Chart — Processed vs Unprocessed (always both visible) */}
@@ -447,7 +447,7 @@ const ArticlesPage = () => {
                   <TrendingUp className="w-5 h-5 text-white" />
                 </div>
                 <div className="text-left">
-                  <h3 className="text-sm font-semibold text-white">বিশ্লেষণ চার্ট</h3>
+                  <h3 className="text-sm font-semibold text-white">Analytics Charts</h3>
                   <p className="text-[11px] text-gray-500">Bias Analytics &amp; Trends</p>
                 </div>
               </div>

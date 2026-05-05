@@ -2,6 +2,7 @@ import { Link, useLocation } from 'react-router-dom';
 import { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
+import { useLanguage } from '../contexts/LanguageContext';
 import { LogOut, Sun, Moon, Users } from 'lucide-react';
 
 const Navbar = () => {
@@ -9,6 +10,7 @@ const Navbar = () => {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const { user, isAuthenticated, isAdmin, logout } = useAuth();
   const { isDark, toggleTheme } = useTheme();
+  const { language, setLanguage, translate } = useLanguage();
 
   // Auto-close mobile menu on route change
   useEffect(() => {
@@ -16,11 +18,11 @@ const Navbar = () => {
   }, [location.pathname]);
 
   const navItems = [
-    { path: '/', label: 'Analyze', icon: '🔍', protected: false },
-    { path: '/articles', label: 'Articles', icon: '📰', protected: false },
-    { path: '/clusters', label: 'Clusters', icon: '🔗', protected: false },
-    { path: '/dashboard', label: 'Dashboard', icon: '📊', protected: true, adminOnly: false },
-    { path: '/scrape', label: 'Scrape', icon: '🌐', protected: true, adminOnly: true },
+    { path: '/', label: { bn: 'বিশ্লেষণ', en: 'Analyze' }, icon: '🔍', protected: false },
+    { path: '/articles', label: { bn: 'প্রবন্ধ', en: 'Articles' }, icon: '📰', protected: false },
+    { path: '/clusters', label: { bn: 'ক্লাস্টার', en: 'Clusters' }, icon: '🔗', protected: false },
+    { path: '/dashboard', label: { bn: 'ড্যাশবোর্ড', en: 'Dashboard' }, icon: '📊', protected: true, adminOnly: false },
+    { path: '/scrape', label: { bn: 'স্ক্র্যাপ', en: 'Scrape' }, icon: '🌐', protected: true, adminOnly: true },
   ];
 
   // Filter nav items based on authentication
@@ -35,23 +37,23 @@ const Navbar = () => {
 
   return (
     <nav className={`navbar-container backdrop-blur-sm border-b sticky top-0 z-50 ${isDark ? 'bg-gray-900/95 border-gray-800' : ''}`}>
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex items-center justify-between h-16">
+      <div className="max-w-[1400px] mx-auto px-4 sm:px-6 lg:px-8 xl:px-10">
+        <div className="flex items-center justify-between h-20 py-2">
           {/* Logo */}
-          <Link to="/" className="flex items-center space-x-3 group">
+          <Link to="/" className="flex items-center space-x-3 group shrink-0">
             <div className="w-10 h-10 bg-gradient-to-br from-primary-500 to-emerald-500 rounded-lg flex items-center justify-center group-hover:scale-110 transition-transform">
               <span className="text-2xl">✨</span>
             </div>
             <div className="hidden sm:block">
-              <h1 className="text-xl font-bold bg-gradient-to-r from-primary-400 to-emerald-400 bg-clip-text text-transparent">
+              <h1 className="text-lg font-bold bg-gradient-to-r from-primary-400 to-emerald-400 bg-clip-text text-transparent">
                 BiasFree News
               </h1>
-              <p className="navbar-subtitle text-xs">নিরপেক্ষ সংবাদ</p>
+              <p className="navbar-subtitle text-xs">Unbiased news</p>
             </div>
           </Link>
 
           {/* Desktop Navigation */}
-          <div className="hidden md:flex items-center space-x-1.5">
+          <div className="hidden md:flex items-center space-x-2">
             {visibleNavItems.map((item) => (
               <Link
                 key={item.path}
@@ -71,13 +73,13 @@ const Navbar = () => {
                 `}
               >
                 <span>{item.icon}</span>
-                <span>{item.label}</span>
+                <span>{translate(item.label.bn, item.label.en)}</span>
               </Link>
             ))}
 
             {/* Auth Section */}
             {isAuthenticated ? (
-              <div className="flex items-center ml-2 space-x-1.5">
+              <div className="flex items-center ml-2 space-x-2">
                 {/* Admin Users link */}
                 {isAdmin && (
                   <Link
@@ -89,10 +91,10 @@ const Navbar = () => {
                         : (isDark ? 'text-gray-400 border-gray-800/60 bg-gray-900/30 hover:bg-yellow-500/10 hover:text-yellow-400 hover:border-yellow-500/30' : 'nav-item-admin-inactive')
                       }
                     `}
-                    title="Manage Users"
+                    title={translate('ব্যবহারকারী পরিচালনা করুন', 'Manage users')}
                   >
                     <Users className="w-4 h-4" />
-                    <span className="text-sm">Users</span>
+                    <span className="text-sm">{translate('ব্যবহারকারী', 'Users')}</span>
                   </Link>
                 )}
 
@@ -116,7 +118,7 @@ const Navbar = () => {
                   <span>{user?.username}</span>
                   {isAdmin && (
                     <span className="px-1.5 py-0.5 text-[10px] bg-yellow-500/20 text-yellow-400 rounded font-semibold">
-                      Admin
+                      {translate('অ্যাডমিন', 'Admin')}
                     </span>
                   )}
                 </Link>
@@ -125,16 +127,33 @@ const Navbar = () => {
                 <button
                   onClick={toggleTheme}
                   className={`p-2 rounded-lg border transition-all duration-200 ${isDark ? 'border-gray-800/60 bg-gray-900/30 text-gray-400 hover:text-amber-400 hover:border-amber-500/40 hover:bg-amber-500/10' : 'theme-toggle-light'}`}
-                  title={isDark ? 'Switch to day view' : 'Switch to night view'}
+                  title={isDark ? translate('দিনের থিমে যান', 'Switch to day view') : translate('রাতের থিমে যান', 'Switch to night view')}
                 >
                   {isDark ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
                 </button>
+
+                <div className="flex items-center rounded-lg border border-gray-800/60 overflow-hidden">
+                  <button
+                    onClick={() => setLanguage('bn')}
+                    className={`px-2.5 py-1.5 text-xs font-semibold transition-colors ${language === 'bn' ? 'bg-primary-500 text-white' : 'text-gray-400 hover:text-white hover:bg-gray-800/70'}`}
+                    title={translate('বাংলা', 'Bangla')}
+                  >
+                    BN
+                  </button>
+                  <button
+                    onClick={() => setLanguage('en')}
+                    className={`px-2.5 py-1.5 text-xs font-semibold transition-colors border-l border-gray-800/60 ${language === 'en' ? 'bg-primary-500 text-white' : 'text-gray-400 hover:text-white hover:bg-gray-800/70'}`}
+                    title={translate('ইংরেজি', 'English')}
+                  >
+                    EN
+                  </button>
+                </div>
 
                 {/* Logout button */}
                 <button
                   onClick={logout}
                   className={`p-2 rounded-lg border transition-all duration-200 ${isDark ? 'border-gray-800/60 bg-gray-900/30 text-gray-500 hover:text-red-400 hover:border-red-500/40 hover:bg-red-500/10' : 'logout-btn-light'}`}
-                  title="Logout"
+                  title={translate('লগ আউট', 'Logout')}
                 >
                   <LogOut className="w-4.5 h-4.5" />
                 </button>
@@ -145,15 +164,29 @@ const Navbar = () => {
                 <button
                   onClick={toggleTheme}
                   className={`p-2 rounded-lg border transition-all duration-200 ${isDark ? 'border-gray-800/60 bg-gray-900/30 text-gray-400 hover:text-amber-400 hover:border-amber-500/40 hover:bg-amber-500/10' : 'theme-toggle-light'}`}
-                  title={isDark ? 'Switch to day view' : 'Switch to night view'}
+                  title={isDark ? translate('দিনের থিমে যান', 'Switch to day view') : translate('রাতের থিমে যান', 'Switch to night view')}
                 >
                   {isDark ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
                 </button>
+                <div className="flex items-center rounded-lg border border-gray-800/60 overflow-hidden">
+                  <button
+                    onClick={() => setLanguage('bn')}
+                    className={`px-2.5 py-1.5 text-xs font-semibold transition-colors ${language === 'bn' ? 'bg-primary-500 text-white' : 'text-gray-400 hover:text-white hover:bg-gray-800/70'}`}
+                  >
+                    BN
+                  </button>
+                  <button
+                    onClick={() => setLanguage('en')}
+                    className={`px-2.5 py-1.5 text-xs font-semibold transition-colors border-l border-gray-800/60 ${language === 'en' ? 'bg-primary-500 text-white' : 'text-gray-400 hover:text-white hover:bg-gray-800/70'}`}
+                  >
+                    EN
+                  </button>
+                </div>
                 <Link
                   to="/login"
                   className="px-4 py-2 rounded-lg font-medium bg-primary-500 text-white hover:bg-primary-600 transition-all duration-200 border border-primary-500 hover:shadow-md hover:shadow-primary-500/20"
                 >
-                  Login
+                  {translate('লগ ইন', 'Login')}
                 </Link>
               </div>
             )}
@@ -161,6 +194,20 @@ const Navbar = () => {
 
           {/* Mobile menu button */}
           <div className="md:hidden flex items-center gap-2">
+            <div className="flex items-center rounded-lg border border-gray-800/60 overflow-hidden">
+              <button
+                onClick={() => setLanguage('bn')}
+                className={`px-2.5 py-1.5 text-xs font-semibold transition-colors ${language === 'bn' ? 'bg-primary-500 text-white' : 'text-gray-400 hover:text-white hover:bg-gray-800/70'}`}
+              >
+                BN
+              </button>
+              <button
+                onClick={() => setLanguage('en')}
+                className={`px-2.5 py-1.5 text-xs font-semibold transition-colors border-l border-gray-800/60 ${language === 'en' ? 'bg-primary-500 text-white' : 'text-gray-400 hover:text-white hover:bg-gray-800/70'}`}
+              >
+                EN
+              </button>
+            </div>
             {/* Mobile theme toggle */}
             <button
               onClick={toggleTheme}
@@ -211,7 +258,7 @@ const Navbar = () => {
                 `}
               >
                 <span>{item.icon}</span>
-                <span>{item.label}</span>
+                <span>{translate(item.label.bn, item.label.en)}</span>
               </Link>
             ))}
 
@@ -230,7 +277,7 @@ const Navbar = () => {
                     }`}
                   >
                     <Users className="w-4 h-4" />
-                    <span>Manage Users</span>
+                    <span>{translate('ব্যবহারকারী পরিচালনা করুন', 'Manage users')}</span>
                   </Link>
                 )}
                 <Link
@@ -249,7 +296,7 @@ const Navbar = () => {
                   <span>{user?.username}</span>
                   {isAdmin && (
                     <span className="px-1.5 py-0.5 text-[10px] bg-yellow-500/20 text-yellow-400 rounded font-semibold">
-                      Admin
+                      {translate('অ্যাডমিন', 'Admin')}
                     </span>
                   )}
                 </Link>
@@ -261,7 +308,7 @@ const Navbar = () => {
                   className={`w-full text-left px-3 py-2.5 rounded-lg border flex items-center space-x-2 transition-all duration-200 ${isDark ? 'text-red-400 border-gray-800/60 hover:bg-red-500/10 hover:border-red-500/40' : 'logout-mobile-light'}`}
                 >
                   <LogOut className="w-4 h-4" />
-                  <span>Logout</span>
+                  <span>{translate('লগ আউট', 'Logout')}</span>
                 </button>
               </div>
             ) : (
@@ -270,7 +317,7 @@ const Navbar = () => {
                 onClick={() => setIsMobileMenuOpen(false)}
                 className="block px-3 py-2.5 rounded-lg font-medium bg-primary-500 text-white hover:bg-primary-600 transition-all duration-200 text-center border border-primary-500"
               >
-                Login
+                {translate('লগ ইন', 'Login')}
               </Link>
             )}
           </div>
