@@ -468,7 +468,7 @@ const ArticlesPage = () => {
                   <option value={365}>Last year</option>
                 </select>
                 <button
-                  onClick={fetchVizData}
+                    onClick={fetchVizData}
                   disabled={vizLoading}
                   className="p-1.5 bg-gray-800 border border-gray-700 rounded-lg text-gray-400 hover:text-white hover:bg-gray-700 transition-all disabled:opacity-50"
                 >

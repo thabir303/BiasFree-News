@@ -4,3 +4,4 @@ backend copy
 *.log
 *.db-shm
 *.db-wal
+.venv/

@@ -40,7 +40,7 @@ export const CATEGORIES = [
   { key: 'রাজনীতি', label: 'রাজনীতি', sublabel: 'Politics', icon: '🏛️', gradient: 'from-blue-500 to-indigo-600', accent: 'border-blue-500', bg: 'bg-blue-500/5', ring: 'ring-blue-500/20' },
   { key: 'বিশ্ব', label: 'বিশ্ব', sublabel: 'World', icon: '🌍', gradient: 'from-emerald-500 to-teal-600', accent: 'border-emerald-500', bg: 'bg-emerald-500/5', ring: 'ring-emerald-500/20' },
   { key: 'মতামত', label: 'মতামত', sublabel: 'Opinion', icon: '💬', gradient: 'from-amber-500 to-orange-600', accent: 'border-amber-500', bg: 'bg-amber-500/5', ring: 'ring-amber-500/20' },
-  { key: 'বাংলাদেশ', label: 'বাংলাদেশ', sublabel: 'Bangladesh', icon: '🇧🇩', gradient: 'from-red-500 to-rose-600', accent: 'border-red-500', bg: 'bg-red-500/5', ring: 'ring-red-500/20' },
+  { key: 'বাংলাদেশ', label: 'বাংলাদেশ', sublabel: 'Bangladesh', icon: '🇧🇩', gradient: 'from-red-500 to-rose-600', accent: 'border-red-500', bg: 'bg-red-500/5', ring: 'ring-red-500/2<PASSWORD>' },
 ];
 
 export const CATEGORY_META: Record<string, { icon: string; text: string; gradient: string }> = {
